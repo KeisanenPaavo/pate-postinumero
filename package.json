@@ -1,0 +1,33 @@
+{
+  "name": "pate-postinumero",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "predev": "node scripts/kopioi-maplibre.mjs",
+    "prebuild": "node scripts/kopioi-maplibre.mjs",
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "data": "node scripts/etl/build-alueet.mjs",
+    "data:keskustat": "node --env-file=.env scripts/etl/keskustat.mjs",
+    "tarkista:piste": "node scripts/check/piste.mjs"
+  },
+  "dependencies": {
+    "maplibre-gl": "6.11.2",
+    "next": "16.4.0",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "server-only": "^0.0.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/turbopack": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.4.0",
+    "tailwindcss": "^4",
+    "typescript": "^5"
+  }
+}

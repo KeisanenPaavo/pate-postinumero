@@ -1,0 +1,184 @@
+{
+  "106": {
+    "nimi": "Hyvinkää",
+    "kohde": "Hyvinkään asema",
+    "lat": 60.63112,
+    "lon": 24.85778,
+    "tarkistettu": true
+  },
+  "149": {
+    "nimi": "Inkoo",
+    "kohde": "Inkoon kirkonkylä",
+    "lat": 60.04502,
+    "lon": 24.00209,
+    "tarkistettu": true
+  },
+  "186": {
+    "nimi": "Järvenpää",
+    "kohde": "Järvenpään asema",
+    "lat": 60.47341,
+    "lon": 25.09009,
+    "tarkistettu": true
+  },
+  "224": {
+    "nimi": "Karkkila",
+    "kohde": "Karkkilan linja-autoasema",
+    "lat": 60.53533,
+    "lon": 24.2146,
+    "tarkistettu": true
+  },
+  "235": {
+    "nimi": "Kauniainen",
+    "kohde": "Kauniaisten asema",
+    "lat": 60.2118,
+    "lon": 24.72961,
+    "tarkistettu": true
+  },
+  "245": {
+    "nimi": "Kerava",
+    "kohde": "Keravan asema",
+    "lat": 60.40439,
+    "lon": 25.10598,
+    "tarkistettu": true
+  },
+  "257": {
+    "nimi": "Kirkkonummi",
+    "kohde": "Kirkkonummen asema",
+    "lat": 60.1196,
+    "lon": 24.43902,
+    "tarkistettu": true
+  },
+  "407": {
+    "nimi": "Lapinjärvi",
+    "kohde": "Lapinjärven kirkonkylä",
+    "lat": 60.62435,
+    "lon": 26.19847,
+    "tarkistettu": true
+  },
+  "434": {
+    "nimi": "Loviisa",
+    "kohde": "Loviisan tori",
+    "lat": 60.4571,
+    "lon": 26.22562,
+    "tarkistettu": true
+  },
+  "444": {
+    "nimi": "Lohja",
+    "kohde": "Lohjan tori",
+    "lat": 60.24924,
+    "lon": 24.06581,
+    "tarkistettu": true
+  },
+  "504": {
+    "nimi": "Myrskylä",
+    "kohde": "Myrskylän kunnantalo",
+    "lat": 60.67002,
+    "lon": 25.8516,
+    "tarkistettu": true
+  },
+  "505": {
+    "nimi": "Mäntsälä",
+    "kohde": "Mäntsälän asema",
+    "lat": 60.64803,
+    "lon": 25.3067,
+    "tarkistettu": true
+  },
+  "543": {
+    "nimi": "Nurmijärvi",
+    "kohde": "Nurmijärven kirkonkylä",
+    "lat": 60.46812,
+    "lon": 24.80617,
+    "tarkistettu": true
+  },
+  "611": {
+    "nimi": "Pornainen",
+    "kohde": "Pornaisten kunnantalo",
+    "lat": 60.47742,
+    "lon": 25.37372,
+    "tarkistettu": true
+  },
+  "616": {
+    "nimi": "Pukkila",
+    "kohde": "Pukkilan kirkonkylä",
+    "lat": 60.64702,
+    "lon": 25.5849,
+    "tarkistettu": true
+  },
+  "638": {
+    "nimi": "Porvoo",
+    "kohde": "Porvoon tori",
+    "lat": 60.39305,
+    "lon": 25.66447,
+    "tarkistettu": true
+  },
+  "710": {
+    "nimi": "Raasepori",
+    "kohde": "Tammisaari, Raasepori",
+    "lat": 59.97955,
+    "lon": 23.4435,
+    "tarkistettu": true
+  },
+  "753": {
+    "nimi": "Sipoo",
+    "kohde": "Nikkilä, Sipoo",
+    "lat": 60.37546,
+    "lon": 25.26749,
+    "tarkistettu": true
+  },
+  "755": {
+    "nimi": "Siuntio",
+    "kohde": "Siuntion asema",
+    "lat": 60.14043,
+    "lon": 24.2194,
+    "tarkistettu": true
+  },
+  "858": {
+    "nimi": "Tuusula",
+    "kohde": "Hyrylä, Tuusula",
+    "lat": 60.40059,
+    "lon": 25.0321,
+    "tarkistettu": true
+  },
+  "927": {
+    "nimi": "Vihti",
+    "kohde": "Nummela, Vihti",
+    "lat": 60.33281,
+    "lon": 24.32677,
+    "tarkistettu": true
+  },
+  "091": {
+    "nimi": "Helsinki",
+    "kohde": "Rautatientori, Helsinki",
+    "lat": 60.17128,
+    "lon": 24.94257,
+    "tarkistettu": true
+  },
+  "049": {
+    "nimi": "Espoo",
+    "kohde": "Tapiola, Espoo",
+    "lat": 60.17502,
+    "lon": 24.80424,
+    "tarkistettu": true
+  },
+  "092": {
+    "nimi": "Vantaa",
+    "kohde": "Tikkurilan asema, Vantaa",
+    "lat": 60.29233,
+    "lon": 25.04411,
+    "tarkistettu": true
+  },
+  "018": {
+    "nimi": "Askola",
+    "kohde": "Monninkylä, Askola",
+    "lat": 60.49321,
+    "lon": 25.54016,
+    "tarkistettu": true
+  },
+  "078": {
+    "nimi": "Hanko",
+    "kohde": "Hangon asema",
+    "lat": 59.8272,
+    "lon": 22.9684,
+    "tarkistettu": true
+  }
+}
