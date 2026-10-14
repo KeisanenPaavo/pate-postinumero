@@ -6,11 +6,14 @@ import { Kartta } from "../Kartta";
 import { OsoiteHaku, type Osoite } from "../OsoiteHaku";
 import {
   OHJEARVO_PAIVA,
+  etaisyys,
   km,
   meluTuomio,
   meluVyohyke,
   minuuttia,
   pisteParam,
+  useKavely,
+  useLahella,
   useMatka,
   useOsoite,
   usePisteTiedot,
@@ -157,8 +160,47 @@ export function Yhteenveto({
   const tiedot = usePisteTiedot(lahto);
   const melu = osoite && tiedot.data ? meluTuomio(tiedot.data.melu) : null;
   const koulu = tiedot.data?.koulut?.find((k) => /perus/i.test(k.tyyppi)) ?? tiedot.data?.koulut?.[0];
+  const lahella = useLahella(lahto);
+  const pysakki = lahella.data?.pysakit?.[0] ?? null;
+  const kauppa = lahella.data?.kaupat?.[0] ?? null;
+  // Kävelyreitit lähimpiin arjen kohteisiin (samat haut kuin Lähiympäristö-kartalla – välimuisti jaetaan).
+  const kavelyPysakki = useKavely(lahto, pysakki);
+  const kavelyKauppa = useKavely(lahto, kauppa);
+  const kavelyKoulu = useKavely(lahto, koulu ?? null);
   const yli = melu?.db != null && melu.db >= OHJEARVO_PAIVA;
   const ladataan = "…";
+  const keskelta = osoite ? "" : " (alueen keskeltä)";
+
+  /**
+   * Kävelyrivi: arvona kävelyminuutit, selitteenä kohde ja kävelymatka. Jos reittiä ei saada,
+   * näytetään linnuntie-etäisyys ja kerrotaan se selitteessä.
+   */
+  const kavelyRivi = (
+    kohde: { nimi: string } | null | undefined,
+    linnuntieKm: number | undefined,
+    kavely: ReturnType<typeof useKavely>,
+    lisa: string,
+    haku: { virhe?: boolean; valmis: boolean },
+  ) => {
+    if (!kohde) return { arvo: haku.virhe ? "–" : haku.valmis ? "–" : ladataan, selite: haku.valmis && !haku.virhe ? "Ei lähistöllä." : undefined };
+    const nimi = `${kohde.nimi}${lisa}${keskelta}`;
+    // Yli 45 min kävely ei ole arjen mittari (maaseutu): isona arvona matka, kävelyaika selitteessä.
+    if (kavely.data && kavely.data.minuutit > 45)
+      return { arvo: etaisyys(kavely.data.metrit / 1000), selite: `kävellen ${kavely.data.minuutit} min · ${nimi}` };
+    if (kavely.data) return { arvo: `${kavely.data.minuutit} min`, selite: `kävellen ${etaisyys(kavely.data.metrit / 1000)} · ${nimi}` };
+    if (kavely.virhe && linnuntieKm != null) return { arvo: etaisyys(linnuntieKm), selite: `linnuntietä · ${nimi}` };
+    return { arvo: ladataan, selite: nimi };
+  };
+  const lahellaHaku = { virhe: lahella.virhe, valmis: !!lahella.data };
+  const rPysakki = kavelyRivi(
+    pysakki,
+    pysakki ? pysakki.metrit / 1000 : undefined,
+    kavelyPysakki,
+    pysakki ? `, ${pysakki.kulkuneuvo} ${pysakki.linjat.slice(0, 3).join(", ")}${pysakki.linjat.length > 3 ? " …" : ""}` : "",
+    lahellaHaku,
+  );
+  const rKauppa = kavelyRivi(kauppa, kauppa?.km, kavelyKauppa, "", lahellaHaku);
+  const rKoulu = kavelyRivi(koulu, koulu?.km, kavelyKoulu, "", { virhe: tiedot.virhe, valmis: !!tiedot.data });
 
   return (
     <section aria-labelledby="tiivistelma" className="mt-10 border-t-[3px] border-ink">
@@ -172,8 +214,18 @@ export function Yhteenveto({
             href="#liikenne"
             otsikko="Keskustaan"
             arvo={matka.data ? minuuttia(matka.data.julkinen) : matka.virhe ? "–" : ladataan}
-            selite={matka.data ? `${matka.data.reitti ?? "julkisilla"}, arkiaamuna klo 8` : matka.virhe ? "Reittiä ei saatu." : undefined}
+            selite={
+              matka.data
+                ? matka.data.julkinen == null
+                  ? "Julkista yhteyttä ei löytynyt arkiaamuna klo 8."
+                  : `${matka.data.reitti ?? "julkisilla"}, arkiaamuna klo 8`
+                : matka.virhe
+                  ? "Reittiä ei saatu."
+                  : undefined
+            }
           />
+          <Rivi href="#lahella" otsikko="Lähin pysäkki" arvo={rPysakki.arvo} selite={rPysakki.selite} />
+          <Rivi href="#lahella" otsikko="Lähin ruokakauppa" arvo={rKauppa.arvo} selite={rKauppa.selite} />
           <Rivi
             href="#melu"
             otsikko="Liikennemelu"
@@ -196,8 +248,8 @@ export function Yhteenveto({
           <Rivi
             href="#koulut"
             otsikko="Lähin peruskoulu"
-            arvo={koulu ? km(koulu.km) : tiedot.virhe ? "–" : ladataan}
-            selite={koulu ? `${koulu.nimi}${osoite ? "" : " (alueen keskeltä)"}` : undefined}
+            arvo={rKoulu.arvo}
+            selite={rKoulu.selite}
           />
         </tbody>
       </table>

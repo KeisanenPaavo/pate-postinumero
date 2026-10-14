@@ -172,7 +172,7 @@ async function AlueSisalto({ params }: Pick<PageProps<"/[slug]">, "params">) {
         >
           <Osoitepalkki keskipiste={alue.keskipiste} alueNimi={alue.nimi} hintaLause={hintaLause} keskusta={helsinki} />
         </Suspense>
-        <Suspense fallback={<div className="mt-10 h-64 border-t-[3px] border-ink" />}>
+        <Suspense fallback={<div className="mt-10 h-96 border-t-[3px] border-ink" />}>
           <Yhteenveto keskipiste={alue.keskipiste} hinta={yhteenvetoHinta} keskusta={helsinki} />
         </Suspense>
       </header>

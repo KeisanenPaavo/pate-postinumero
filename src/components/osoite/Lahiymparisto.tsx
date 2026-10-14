@@ -121,7 +121,8 @@ export function Lahiymparisto({ keskipiste }: { keskipiste: Piste }) {
           reitti={reitti}
           onValitse={valitse}
           rivinSymboli
-          tila={ladataan ? "…" : lahella.data?.pysakit === null || lahella.virhe ? "Pysäkkihaku ei juuri nyt toimi." : "Ei pysäkkejä 800 metrin säteellä."}
+          huomautus={lahella.data?.pysakkiSade === 2000 && lahella.data.pysakit?.length ? "800 metrin säteellä ei ole pysäkkejä – näytetään lähimmät 2 km säteeltä." : null}
+          tila={ladataan ? "…" : lahella.data?.pysakit === null || lahella.virhe ? "Pysäkkihaku ei juuri nyt toimi." : "Ei pysäkkejä 2 km säteellä."}
         />
         <Lista
           laji="koulu"
@@ -149,6 +150,7 @@ function Lista({
   reitti,
   onValitse,
   rivinSymboli,
+  huomautus,
   tila,
 }: {
   laji: Laji;
@@ -158,6 +160,8 @@ function Lista({
   onValitse: (k: Kohde) => void;
   /** Pysäkeillä kulkuneuvon symboli rivillä, koska samassa listassa on busseja, ratikoita ja metroja. */
   rivinSymboli?: boolean;
+  /** Lisätieto listan alussa, esim. laajennettu hakusäde. */
+  huomautus?: string | null;
   tila: string;
 }) {
   return (
@@ -166,6 +170,7 @@ function Lista({
         <Symboli ikoni={LAJIT[laji].ikoni} />
         {LAJIT[laji].otsikko}
       </h3>
+      {huomautus && <p className="border-b border-rule py-2 text-sm text-muted">{huomautus}</p>}
       {kohteet.length ? (
         <ul>
           {kohteet.map((k) => {

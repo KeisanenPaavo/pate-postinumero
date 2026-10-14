@@ -19,6 +19,8 @@ export type Lahella = {
   kaupat: (PalveluPiste & { tyyppi: string })[];
   paivakodit: PalveluPiste[];
   pysakit: Pysakki[] | null;
+  /** Pysäkkihaun säde metreinä: 800, tai 2000 jos 800 m säteellä ei ollut pysäkkejä. */
+  pysakkiSade: number | null;
   junaAsemat: JunaAsema[] | null;
 };
 export type PisteTiedot = { melu: Melu | null; koulut: Koulu[] | null };

@@ -15,7 +15,7 @@ Skriptit: `scripts/check/` — aja projektin juuresta.
 | Koulut | Tilastokeskus WFS `oppilaitokset:oppilaitokset` (2025) + pääkaupunkiseudun palvelukartta `api.hel.fi/servicemap/v2`, ETL (`npm run data:koulut`) | ⚠️→✅ | 2501 koulua koko maassa — **ei päiväkoteja**. **Rekisterin koordinaatit osin pielessä** (14.10.2026): Uudellamaalla 51 koulua yli 1 km väärässä paikassa verrattuna OSM:ään, pahimmat Espoon koulut Turun seudulla (~135 km) ja Vantaan koulut 40–60 km. Korjaus: Helsingin, Espoon, Vantaan ja Kauniaisen kouluille sijainti palvelukartasta yksiselitteisellä nimiosumalla (64 korjattu, 34 puuttuvaa lisätty). Muualla Uudellamaalla rekisterin sijainti sellaisenaan. |
 | Päiväkodit | OSM Overpass `amenity=kindergarten`, esiladattu ETL:ssä (`npm run data:palvelut`) | ✅ | 913 nimettyä päiväkotia (14.10.2026); Overpass kaatuilee → haetaan kerran, peilipalvelimet varalla |
 | Ruokakaupat | OSM Overpass `shop=supermarket\|convenience`, sama ETL | ✅ | 762 kauppaa; huoltoasemamyymälät ja kioskit pois (brändi/nimi) |
-| Pysäkit | Digitransit GraphQL `stopsByRadius` (800 m) | ✅ | koko Suomi; laiturit yhdistetään nimen ja kulkuneuvon mukaan, yölinjat pois |
+| Pysäkit | Digitransit GraphQL `stopsByRadius` (800 m; jos tyhjä, 2 km) | ✅ | koko Suomi; laiturit yhdistetään nimen ja kulkuneuvon mukaan, yölinjat pois. Maaseudulla (esim. Halkia) lähin pysäkki on yli 800 m päässä → laajennettu haku |
 | Geokoodaus | Digitransit `geocoding/v1/search` | ✅ | palauttaa myös postinumeron (täsmäsi polygonihakuun) |
 | Matka-ajat | Digitransit GraphQL `routing/v2/finland/gtfs/v1`, `planConnection` | ✅ | koko Suomi: julkinen, pyörä, kävely |
 

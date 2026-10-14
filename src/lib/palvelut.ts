@@ -221,19 +221,29 @@ export function lahimmatPalvelut(p: Piste): { kaupat: (PalveluPiste & { tyyppi: 
 
 export type Pysakki = { nimi: string; lat: number; lon: number; metrit: number; kulkuneuvo: string; linjat: string[] };
 
-/** Lähimmät pysäkit 800 m säteellä. Saman nimiset laiturit (kadun eri puolilla) yhdistetään. */
-export async function lahimmatPysakit(p: Piste, n = 6): Promise<Pysakki[]> {
+/** Pysäkkihaun säde: taajamassa 800 m; jos sillä ei löydy yhtään pysäkkiä (maaseutu), haetaan 2 km säteeltä. */
+export const PYSAKKISADE = { taajama: 800, maaseutu: 2000 } as const;
+
+/** Lähimmät pysäkit ja käytetty hakusäde (m). */
+export async function lahimmatPysakit(p: Piste): Promise<{ pysakit: Pysakki[]; sade: number }> {
   "use cache";
   cacheLife("days");
-  const query = `query ($lat: Float!, $lon: Float!) {
-    stopsByRadius(lat: $lat, lon: $lon, radius: 800, first: 60) {
+  const lahella = await pysakitSateella(p, PYSAKKISADE.taajama);
+  if (lahella.length) return { pysakit: lahella, sade: PYSAKKISADE.taajama };
+  return { pysakit: await pysakitSateella(p, PYSAKKISADE.maaseutu), sade: PYSAKKISADE.maaseutu };
+}
+
+/** Lähimmät pysäkit annetulla säteellä. Saman nimiset laiturit (kadun eri puolilla) yhdistetään. */
+async function pysakitSateella(p: Piste, sade: number, n = 6): Promise<Pysakki[]> {
+  const query = `query ($lat: Float!, $lon: Float!, $sade: Int!) {
+    stopsByRadius(lat: $lat, lon: $lon, radius: $sade, first: 60) {
       edges { node { distance stop { name lat lon vehicleMode routes { shortName } } } }
     }
   }`;
   const res = await fetch(`${DIGITRANSIT}/routing/v2/finland/gtfs/v1`, {
     method: "POST",
     headers: { ...digitransitHeaders(), "Content-Type": "application/json" },
-    body: JSON.stringify({ query, variables: { lat: p.lat, lon: p.lon } }),
+    body: JSON.stringify({ query, variables: { lat: p.lat, lon: p.lon, sade } }),
     signal: AbortSignal.timeout(20_000),
   });
   const js = await res.json();
