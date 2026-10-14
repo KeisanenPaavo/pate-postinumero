@@ -5,6 +5,9 @@ import { pyorista } from "@/lib/palvelut";
 
 // Kaavoitus ja rakentaminen osoitteen lähellä. ?p=lat,lon&kunta=091
 // Kunta tulee sivulta (postinumeroalueen kunta); vain Helsingiltä on avoin vektoriaineisto.
+// Helsingin kaivuilmoitustaso vastaa välillä vasta ~30 s:ssa ensimmäisellä haulla (sen jälkeen välimuistista).
+export const maxDuration = 60;
+
 export async function GET(request: NextRequest) {
   const piste = lueKoordinaatti(request.nextUrl.searchParams.get("p"));
   const kunta = request.nextUrl.searchParams.get("kunta") ?? "";

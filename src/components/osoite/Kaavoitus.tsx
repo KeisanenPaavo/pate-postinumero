@@ -9,7 +9,7 @@ export type KaavoitusTiedot = {
   kunta: string;
   kaavat: VireillaKaava[];
   rakennuskielto: { selite: string; paattyy: string | null } | null;
-  tyot: Katutyo[];
+  tyot: Katutyo[] | null;
   lahde: string;
 };
 
@@ -53,7 +53,7 @@ export function KaavoitusOsio({ keskipiste, pno, kunta }: { keskipiste: Piste; p
       ) : (
         <>
           <p className="mb-5 max-w-[640px]">
-            <Tiivistys kaavat={d.kaavat.length} tyot={d.tyot.length} mista={mista} />
+            <Tiivistys kaavat={d.kaavat.length} tyot={d.tyot?.length ?? null} mista={mista} />
             {d.kaavat.some((k) => k.alueella) && ` ${osoite ? "Osoite" : "Alueen keskipiste"} on itse vireillä olevan kaavan alueella.`}
           </p>
           {d.rakennuskielto && (
@@ -91,7 +91,7 @@ export function KaavoitusOsio({ keskipiste, pno, kunta }: { keskipiste: Piste; p
             </>
           )}
 
-          {d.tyot.length > 0 && (
+          {d.tyot && d.tyot.length > 0 && (
             <>
               <h3 className="mb-2 font-semibold">Katu- ja kaivutyöt lähellä</h3>
               <ul className="mb-6 max-w-[640px] border-t border-ink">
@@ -121,11 +121,18 @@ export function KaavoitusOsio({ keskipiste, pno, kunta }: { keskipiste: Piste; p
 }
 
 /** "Osoitteen lähellä on 2 vireillä olevaa asemakaavaa (500 m) ja 1 käynnissä oleva katu- tai kaivutyö (200 m)." */
-function Tiivistys({ kaavat, tyot, mista }: { kaavat: number; tyot: number; mista: string }) {
+function Tiivistys({ kaavat, tyot, mista }: { kaavat: number; tyot: number | null; mista: string }) {
   const kaavaOsa = kaavat ? `${kaavat} vireillä ${kaavat === 1 ? "oleva asemakaava" : "olevaa asemakaavaa"} 500 metrin säteellä` : null;
   const tyoOsa = tyot
     ? `${tyot} ${tyot === 1 ? "käynnissä oleva tai pian alkava katu- tai kaivutyö" : "käynnissä olevaa tai pian alkavaa katu- tai kaivutyötä"} 200 metrin säteellä`
     : null;
+  if (tyot === null)
+    return (
+      <>
+        {mista} lähellä {kaavaOsa ? <>on <strong className="font-semibold">{kaavaOsa}</strong></> : "ei ole vireillä olevia asemakaavoja (500 m)"}. Katu- ja
+        kaivutöiden tietoja ei juuri nyt saatu Helsingin palvelusta.
+      </>
+    );
   if (!kaavaOsa && !tyoOsa)
     return <>{mista} lähellä ei ole vireillä olevia asemakaavoja (500 m) eikä käynnissä olevia katu- tai kaivutöitä (200 m).</>;
   return (

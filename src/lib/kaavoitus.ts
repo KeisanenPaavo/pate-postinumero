@@ -17,14 +17,21 @@ export type Kaavoitus = {
   kunta: string;
   kaavat: VireillaKaava[];
   rakennuskielto: { selite: string; paattyy: string | null } | null;
-  tyot: Katutyo[];
+  /** null = katutöiden haku epäonnistui (ei sama kuin "ei töitä"). */
+  tyot: Katutyo[] | null;
   lahde: string;
 };
 
 type Geometria = { type: "Polygon" | "MultiPolygon"; coordinates: number[][][] | number[][][][] };
 type Feature<P> = { geometry: Geometria | null; properties: P };
 
+/**
+ * Yhden tason kohteet pisteen ympäriltä. Välimuistitetaan tasoittain ja vain onnistuneet haut: virhe heitetään,
+ * jottei tyhjä tulos jää välimuistiin (kaivuilmoitustaso vastaa välillä vasta ~15 s:ssa).
+ */
 async function hkiTaso<P>(taso: string, p: Piste, sadeM: number): Promise<Feature<P>[]> {
+  "use cache";
+  cacheLife("hours");
   // Suorakulmiohaku (lon,lat), tarkka etäisyys lasketaan alla.
   const dLat = sadeM / 111_320;
   const dLon = sadeM / (111_320 * Math.cos((p.lat * Math.PI) / 180));
@@ -33,7 +40,7 @@ async function hkiTaso<P>(taso: string, p: Piste, sadeM: number): Promise<Featur
     outputFormat: "application/json", srsName: "EPSG:4326",
     bbox: `${p.lon - dLon},${p.lat - dLat},${p.lon + dLon},${p.lat + dLat},EPSG:4326`,
   })}`;
-  const res = await fetch(url, { headers: { "User-Agent": "pate-postinumero/0.1" }, signal: AbortSignal.timeout(20_000) });
+  const res = await fetch(url, { headers: { "User-Agent": "pate-postinumero/0.1" }, signal: AbortSignal.timeout(40_000) });
   if (!res.ok) throw new Error(`${res.status} Helsinki ${taso}`);
   return ((await res.json()) as { features: Feature<P>[] }).features;
 }
@@ -96,7 +103,7 @@ async function helsinki(p: Piste): Promise<Kaavoitus> {
   const [kaavat, kiellot, kaivut] = await Promise.all([
     hkiTaso<KaavaOm>("Kaavahakemisto_alue_kaava_vireilla", p, KAAVA_SADE),
     hkiTaso<KieltoOm>("Rakennuskieltoalue_asemakaavan_laatimiseksi", p, 50).catch(() => []),
-    hkiTaso<KaivuOm>("Kaivuilmoitus_alue", p, TYO_SADE).catch(() => []),
+    hkiTaso<KaivuOm>("Kaivuilmoitus_alue", p, TYO_SADE).catch(() => null),
   ]);
 
   const kaavaLista = kaavat
@@ -118,7 +125,7 @@ async function helsinki(p: Piste): Promise<Kaavoitus> {
   const tanaan = new Date().toISOString().slice(0, 10);
   const raja = new Date(Date.now() + 90 * 864e5).toISOString().slice(0, 10);
   const tyot = kaivut
-    .filter((f) => (f.properties.tyo_paattyy ?? "") >= tanaan && (f.properties.tyo_alkaa ?? "") <= raja)
+    ?.filter((f) => (f.properties.tyo_paattyy ?? "") >= tanaan && (f.properties.tyo_alkaa ?? "") <= raja)
     .map((f) => ({
       kuvaus: (f.properties.tyon_tarkoitus ?? "")
         .split("\n")[0]
@@ -139,15 +146,13 @@ async function helsinki(p: Piste): Promise<Kaavoitus> {
     kunta: "091",
     kaavat: kaavaLista,
     rakennuskielto: kielto ? { selite: kielto.properties.laatu_selite ?? "Rakennuskielto asemakaavan laatimiseksi", paattyy: kielto.properties.paattymispvm } : null,
-    tyot,
+    tyot: tyot ?? null,
     lahde: "Helsingin kaupunki: kaavahakemisto, rakennuskiellot ja kaivuilmoitukset (CC BY 4.0)",
   };
 }
 
 /** Kaavoitus ja rakentaminen osoitteen lähellä; null, jos kunnalta ei ole avointa vektoriaineistoa. */
 export async function kaavoitus(p: Piste, kunta: string): Promise<Kaavoitus | null> {
-  "use cache";
-  cacheLife("hours");
   if (kunta === "091") return helsinki(p);
   return null;
 }

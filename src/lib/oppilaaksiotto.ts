@@ -95,7 +95,9 @@ async function helsinki(p: Piste): Promise<Oppilaaksiotto> {
   // Syksyllä "tuleva"-taso voi olla jo käynnissä oleva lukuvuosi, jos nykyistä tasoa ei ole vielä päivitetty.
   const koulut = await Promise.all(
     HKI_TASOT.map(async ([taso, luokat, kieli]) => {
-      const [nyt, tuleva] = await Promise.all([hkiTaso(taso, p), hkiTaso(`${taso}_tuleva`, p).catch(() => [])]);
+      // Ei .catch: jos jompikumpi haku epäonnistuu, koko tulos jätetään välimuistittamatta (muuten väärän
+      // lukuvuoden alue voisi jäädä välimuistiin päiviksi). /api/piste palauttaa silloin oppilaaksiotto = null.
+      const [nyt, tuleva] = await Promise.all([hkiTaso(taso, p), hkiTaso(`${taso}_tuleva`, p)]);
       const nimi = (o: HkiOminaisuudet) => o.nimi_fi ?? o.nimi_se ?? "";
       const valittu = [...nyt, ...tuleva].find((o) => nimi(o).includes(lv)) ?? nyt[0];
       if (!valittu) return null;

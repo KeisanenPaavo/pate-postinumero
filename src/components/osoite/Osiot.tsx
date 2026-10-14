@@ -279,7 +279,7 @@ export function Yhteenveto({
                   ? undefined
                   : kaava.rakennuskielto
                     ? `asemakaavaa valmistellaan${kaava.rakennuskielto.paattyy ? `, kielto ${pvm(kaava.rakennuskielto.paattyy)} asti` : ""}${kaava.kaavat.length ? ` · ${kaava.kaavat.length} ${kaava.kaavat.length === 1 ? "kaava" : "kaavaa"} vireillä 500 m säteellä` : ""}`
-                    : `vireillä 500 m säteellä${kaava.kaavat.some((k) => k.alueella) ? ", osoite yhden alueella" : ""}${kaava.tyot.length ? ` · ${kaava.tyot.length} ${kaava.tyot.length === 1 ? "katutyö" : "katutyötä"} 200 m säteellä` : ""}`
+                    : `vireillä 500 m säteellä${kaava.kaavat.some((k) => k.alueella) ? ", osoite yhden alueella" : ""}${kaava.tyot?.length ? ` · ${kaava.tyot.length} ${kaava.tyot.length === 1 ? "katutyö" : "katutyötä"} 200 m säteellä` : ""}`
               }
             />
           )}
