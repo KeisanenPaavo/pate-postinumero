@@ -5,7 +5,15 @@ import { useEffect, useState } from "react";
 
 export type Piste = { lat: number; lon: number };
 export type Kohde = Piste & { nimi: string };
-export type Matka = { julkinen: number | null; vaihdot: number | null; reitti: string | null; pyora: number | null; kavely: number | null };
+export type Matka = {
+  julkinen: number | null;
+  vaihdot: number | null;
+  reitti: string | null;
+  pyora: number | null;
+  kavely: number | null;
+  pyoraMetrit?: number | null;
+  julkinenMetrit?: number | null;
+};
 export type Melu = {
   maantiet: { paiva: string | null; yo: string | null };
   rautatiet: { paiva: string | null; yo: string | null };
@@ -177,4 +185,6 @@ export function selainLista<T>(avain: string, max: number) {
 
 export type Vertailtava = Kohde;
 export const VERTAILU = selainLista<Vertailtava>("vertailu", 3);
+/** Vertailun vapaasti valittava kohdeosoite (esim. työpaikka), johon matkat lasketaan kaikista vertailtavista. */
+export const VERTAILUKOHDE = selainLista<Kohde>("vertailuKohde", 1);
 export const samaPiste = (a: Piste, b: Piste) => Math.abs(a.lat - b.lat) < 1e-4 && Math.abs(a.lon - b.lon) < 1e-4;

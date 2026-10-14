@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useMemo, useState, useSyncExternalStore } from "react";
 import { Kartta } from "../Kartta";
+import { JakoPainike } from "../JakoPainike";
 import { OsoiteHaku, type Osoite } from "../OsoiteHaku";
 import { useVertailu } from "../vertailu/useVertailu";
 import {
@@ -107,6 +108,7 @@ export function Osoitepalkki({
             Vaihda osoite
           </button>
           <VertailuPainike osoite={osoite} />
+          <JakoPainike teksti="Jaa raportti" otsikko={`${osoite.nimi} – Aluetarkistus`} url={() => window.location.href} />
         </p>
       ) : (
         <div className="mt-6 max-w-xl">
@@ -125,6 +127,11 @@ export function Osoitepalkki({
             <button type="button" onClick={() => { setMuokkaa(false); setTila(null); }} className="mt-1 min-h-11 text-sm font-medium text-ink-2 hover:text-ink">
               Peruuta
             </button>
+          )}
+          {!osoite && (
+            <p className="mt-2">
+              <JakoPainike teksti="Jaa alueen raportti" otsikko={`${alueNimi} – Aluetarkistus`} url={() => window.location.href} />
+            </p>
           )}
         </div>
       )}

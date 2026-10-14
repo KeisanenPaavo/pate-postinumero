@@ -140,7 +140,17 @@ export async function lahimmatKoulut(p: Piste) {
 
 // --- Matka-ajat (Digitransit) ----------------------------------------------------
 
-export type Matka = { julkinen: number | null; vaihdot: number | null; reitti: string | null; pyora: number | null; kavely: number | null };
+export type Matka = {
+  julkinen: number | null;
+  vaihdot: number | null;
+  reitti: string | null;
+  pyora: number | null;
+  kavely: number | null;
+  /** Pyöräreitin pituus metreinä (tiematka); null jos reittiä ei löytynyt. */
+  pyoraMetrit: number | null;
+  /** Nopeimman julkisen yhteyden kokonaismatka metreinä (sis. kävelyosuudet). */
+  julkinenMetrit: number | null;
+};
 
 /** Seuraava arkipäivä klo 8.00 Suomen aikaa. */
 function arkiaamu() {
@@ -155,12 +165,12 @@ function arkiaamu() {
   return `${date}T08:00:00${offset || "+00:00"}`;
 }
 
-type Itinerary = { duration: number; legs: { mode: string; route: { shortName: string | null } | null }[] };
+type Itinerary = { duration: number; legs: { mode: string; distance: number; route: { shortName: string | null } | null }[] };
 
 async function reitit(from: Piste, to: Piste, modes?: object): Promise<Itinerary[]> {
   const query = `query ($from: PlanLabeledLocationInput!, $to: PlanLabeledLocationInput!, $dt: PlanDateTimeInput, $modes: PlanModesInput) {
     planConnection(origin: $from, destination: $to, dateTime: $dt, modes: $modes, first: 3) {
-      edges { node { duration legs { mode route { shortName } } } }
+      edges { node { duration legs { mode distance route { shortName } } } }
     }
   }`;
   const loc = (p: Piste) => ({ location: { coordinate: { latitude: p.lat, longitude: p.lon } } });
@@ -176,6 +186,8 @@ async function reitit(from: Piste, to: Piste, modes?: object): Promise<Itinerary
 }
 
 const KULKUNEUVO: Record<string, string> = { BUS: "bussi", TRAM: "ratikka", SUBWAY: "metro", RAIL: "juna", FERRY: "lautta" };
+
+const pituus = (i?: Itinerary) => (i ? Math.round(i.legs.reduce((s, l) => s + l.distance, 0)) : null);
 
 export async function matka(from: Piste, to: Piste): Promise<Matka> {
   "use cache";
@@ -194,6 +206,8 @@ export async function matka(from: Piste, to: Piste): Promise<Matka> {
     reitti: kulkuneuvot.map((l) => `${KULKUNEUVO[l.mode] ?? l.mode.toLowerCase()} ${l.route?.shortName ?? ""}`.trim()).join(" → ") || null,
     pyora: min(pyora[0]?.duration),
     kavely: min(kavely[0]?.duration),
+    pyoraMetrit: pituus(pyora[0]),
+    julkinenMetrit: pituus(paras),
   };
 }
 

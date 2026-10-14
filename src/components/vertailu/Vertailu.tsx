@@ -20,7 +20,8 @@ import {
   type PisteTiedot,
   type Vertailtava,
 } from "../osoite/yhteiset";
-import { useVertailu } from "./useVertailu";
+import { JakoPainike } from "../JakoPainike";
+import { jakoParametrit, useVertailuLahde } from "./useVertailu";
 
 type Hinta = { arvo: string; alateksti: string; euroa: number | null; kunnanKeskiarvo: boolean; suhde: string | null };
 type PisteVastaus = PisteTiedot & { pno: string; slug?: string; uusimaa: boolean; alue?: { nimi: string; kunta: string; hinta: Hinta } };
@@ -32,12 +33,13 @@ const kavelyUrl = (a: Piste, b: Piste) => `/api/kavely?mista=${pisteParam(a)}&mi
  * Yhden vertailtavan osoitteen tiedot. Koukut kutsutaan aina samassa järjestyksessä (tyhjällä osoitteella
  * URL on null eikä mitään haeta), jotta vertailussa voi olla 0–3 saraketta.
  */
-function useSarake(o: Vertailtava | null, keskusta: Kohde, omat: Kohde[]) {
+function useSarake(o: Vertailtava | null, keskusta: Kohde, omat: Kohde[], kohde: Kohde | null) {
   const piste = useJson<PisteVastaus>(o ? `/api/piste?p=${pisteParam(o)}` : null);
   const keskustaan = useJson<Matka>(o ? matkaUrl(o, keskusta) : null);
   const oma0 = useJson<Matka>(o && omat[0] ? matkaUrl(o, omat[0]) : null);
   const oma1 = useJson<Matka>(o && omat[1] ? matkaUrl(o, omat[1]) : null);
   const oma2 = useJson<Matka>(o && omat[2] ? matkaUrl(o, omat[2]) : null);
+  const kohteeseen = useJson<Matka>(o && kohde ? matkaUrl(o, kohde) : null);
   const lahella = useJson<Lahella>(o ? `/api/lahella?p=${pisteParam(o)}` : null);
   const pysakki = lahella.data?.pysakit?.[0] ?? null;
   const kauppa = lahella.data?.kaupat?.[0] ?? null;
@@ -46,7 +48,7 @@ function useSarake(o: Vertailtava | null, keskusta: Kohde, omat: Kohde[]) {
   const kPysakki = useJson<Kavely>(o && pysakki ? kavelyUrl(o, pysakki) : null);
   const kKauppa = useJson<Kavely>(o && kauppa ? kavelyUrl(o, kauppa) : null);
   const kKoulu = useJson<Kavely>(o && koulu ? kavelyUrl(o, koulu) : null);
-  return { o, piste, keskustaan, omat: [oma0, oma1, oma2], lahella, pysakki, kauppa, koulu, lahikoulu: !!lahikoulu, kPysakki, kKauppa, kKoulu };
+  return { o, piste, keskustaan, kohteeseen, omat: [oma0, oma1, oma2], lahella, pysakki, kauppa, koulu, lahikoulu: !!lahikoulu, kPysakki, kKauppa, kKoulu };
 }
 
 type Sarake = ReturnType<typeof useSarake>;
@@ -65,9 +67,23 @@ function kavelySolu(haku: { data?: Kavely; virhe?: boolean }, kohde: { nimi: str
   return solu(haku, (k) => ({ arvo: `${k.minuutit} min`, selite: `${kohde.nimi}${lisa} · ${etaisyys(k.metrit / 1000)}`, luku: k.minuutit }));
 }
 
-function rivit(sarakkeet: Sarake[], omat: Kohde[]): Rivi[] {
+function rivit(sarakkeet: Sarake[], omat: Kohde[], kohde: Kohde | null): Rivi[] {
+  const km = (m: number | null | undefined) => (m != null ? etaisyys(m / 1000) : null);
   const matkaSolu = (m: { data?: Matka; virhe?: boolean }) =>
     solu(m, (d) => (d.julkinen == null ? { arvo: "–", selite: "ei julkista yhteyttä", luku: null } : { arvo: `${d.julkinen} min`, selite: d.reitti ?? undefined, luku: d.julkinen }));
+  const pyoraSolu = (m: { data?: Matka; virhe?: boolean }) =>
+    solu(m, (d) =>
+      d.pyora == null ? { arvo: "–", selite: "pyöräreittiä ei löytynyt", luku: null } : { arvo: `${d.pyora} min`, selite: km(d.pyoraMetrit) ?? undefined, luku: d.pyora },
+    );
+  // Matkan pituus tietä pitkin: pyöräreitti (lähin vastine ajomatkalle), muuten julkisen yhteyden matka.
+  const pituusSolu = (m: { data?: Matka; virhe?: boolean }) =>
+    solu(m, (d) => {
+      const metrit = d.pyoraMetrit ?? d.julkinenMetrit ?? null;
+      return metrit == null
+        ? { arvo: "–", luku: null }
+        : { arvo: etaisyys(metrit / 1000), selite: d.pyoraMetrit != null ? "pyöräreittiä pitkin" : "julkisen yhteyden reittiä", luku: metrit };
+    });
+  const kohdeNimi = kohde?.nimi.replace(/, [^,]+$/, "");
   return [
     {
       otsikko: "Neliöhinta (kerrostalo)",
@@ -79,6 +95,14 @@ function rivit(sarakkeet: Sarake[], omat: Kohde[]): Rivi[] {
       ),
     },
     { otsikko: "Helsingin keskustaan julkisilla", paras: "nopein", solut: sarakkeet.map((s) => matkaSolu(s.keskustaan)) },
+    { otsikko: "Helsingin keskustaan pyörällä", paras: "nopein", solut: sarakkeet.map((s) => pyoraSolu(s.keskustaan)) },
+    ...(kohde
+      ? [
+          { otsikko: `${kohdeNimi}: julkisilla`, paras: "nopein", solut: sarakkeet.map((s) => matkaSolu(s.kohteeseen)) },
+          { otsikko: `${kohdeNimi}: pyörällä`, paras: "nopein", solut: sarakkeet.map((s) => pyoraSolu(s.kohteeseen)) },
+          { otsikko: `${kohdeNimi}: matka`, paras: "lyhin", solut: sarakkeet.map((s) => pituusSolu(s.kohteeseen)) },
+        ]
+      : []),
     ...omat.map((k, i) => ({ otsikko: `${k.nimi.replace(/, [^,]+$/, "")} julkisilla`, paras: "nopein", solut: sarakkeet.map((s) => matkaSolu(s.omat[i])) })),
     {
       otsikko: "Lähin pysäkki kävellen",
@@ -131,11 +155,12 @@ function parhaat(r: Rivi): Set<number> {
 }
 
 export function Vertailu({ keskusta }: { keskusta: Kohde }) {
-  const v = useVertailu();
+  const v = useVertailuLahde();
   const omat = useOmatKohteet();
-  const s0 = useSarake(v.kohteet[0] ?? null, keskusta, omat);
-  const s1 = useSarake(v.kohteet[1] ?? null, keskusta, omat);
-  const s2 = useSarake(v.kohteet[2] ?? null, keskusta, omat);
+  const { kohde } = v;
+  const s0 = useSarake(v.kohteet[0] ?? null, keskusta, omat, kohde);
+  const s1 = useSarake(v.kohteet[1] ?? null, keskusta, omat, kohde);
+  const s2 = useSarake(v.kohteet[2] ?? null, keskusta, omat, kohde);
   const sarakkeet = [s0, s1, s2].slice(0, v.kohteet.length);
 
   if (!v.kohteet.length)
@@ -150,6 +175,30 @@ export function Vertailu({ keskusta }: { keskusta: Kohde }) {
 
   return (
     <div>
+      {v.jaettu && (
+        <div className="mb-6 border-l-[3px] border-ink bg-grid px-4 py-3">
+          <p>
+            <strong className="font-semibold">Katselet jaettua vertailua.</strong> Muutokset päivittävät vain tämän linkin, eivät omaa
+            vertailuasi.
+          </p>
+          <p className="mt-1 flex flex-wrap gap-x-5">
+            <button type="button" onClick={v.tallennaOmaksi} className="linkki min-h-11">
+              {v.omienMaara ? `Tallenna omaksi vertailuksi (korvaa nykyiset ${v.omienMaara})` : "Tallenna omaksi vertailuksi"}
+            </button>
+            <Link href="/vertailu" className="inline-flex min-h-11 items-center font-medium text-ink-2 underline hover:text-accent">
+              {v.omienMaara ? "Näytä oma vertailu" : "Sulje jaettu vertailu"}
+            </Link>
+          </p>
+        </div>
+      )}
+      <div className="mb-2 flex justify-end">
+        <JakoPainike
+          teksti="Jaa vertailu"
+          otsikko="Osoitteiden vertailu – Aluetarkistus"
+          url={() => `${window.location.origin}/vertailu?${jakoParametrit(v.kohteet, kohde)}`}
+        />
+      </div>
+      <KohdeValitsin kohde={kohde} onAseta={v.asetaKohde} onPoista={v.poistaKohde} />
       {/* Mobiilissa rivin otsikko omalla rivillään arvojen yläpuolella, jotta kolme saraketta mahtuu ilman vaakavieritystä. */}
       <div className="overflow-x-auto">
         <table className="w-full table-fixed border-collapse text-left">
@@ -159,7 +208,7 @@ export function Vertailu({ keskusta }: { keskusta: Kohde }) {
                 <span className="sr-only">Tieto</span>
               </th>
               {sarakkeet.map((s) => (
-                <th key={pisteParam(s.o!)} scope="col" className="py-3 pr-3 font-normal break-words sm:pr-4">
+                <th key={pisteParam(s.o!)} scope="col" className="py-3 pr-3 font-normal break-words hyphens-auto sm:pr-4">
                   <span className="block font-serif text-lg leading-tight font-semibold sm:text-xl">{s.o!.nimi.replace(/, [^,]+$/, "")}</span>
                   <span className="block text-sm text-muted">
                     {s.piste.data?.alue ? `${s.piste.data.alue.nimi} ${s.piste.data.pno} · ${s.piste.data.alue.kunta}` : s.piste.virhe ? "Tietoja ei saatu" : "…"}
@@ -187,7 +236,7 @@ export function Vertailu({ keskusta }: { keskusta: Kohde }) {
             </tr>
           </thead>
           <tbody>
-            {rivit(sarakkeet, omat).map((r) => {
+            {rivit(sarakkeet, omat, kohde).map((r) => {
               const p = parhaat(r);
               return [
                 <tr key={`${r.otsikko}-m`} className="border-t border-rule sm:hidden">
@@ -230,7 +279,7 @@ export function Vertailu({ keskusta }: { keskusta: Kohde }) {
       )}
       <div className="mt-2 border-t border-ink pt-3 text-[13px] text-muted">
         <p>
-          Julkisen liikenteen matka-ajat seuraavana arkiaamuna klo 8, kävelyajat Digitransitin reitityksellä. Melu on mallinnettu
+          Julkisen liikenteen matka-ajat seuraavana arkiaamuna klo 8; pyörä- ja kävelyajat ja matkat Digitransitin reitityksellä. Melu on mallinnettu
           päiväajan liikennemelu (ohjearvo {OHJEARVO_PAIVA} dB). Vertailu tallentuu vain tähän selaimeen.
         </p>
         {omat.length === 0 && (
@@ -263,6 +312,45 @@ function LisaaOsoite({ onLisaa }: { onLisaa: (k: Vertailtava) => void }) {
         <p role="status" className={`mt-1.5 text-sm ${tila.virhe ? "text-critical" : "text-ink-2"}`}>
           {tila.teksti}
         </p>
+      )}
+    </div>
+  );
+}
+
+/** Vapaasti valittava kohdeosoite (esim. työpaikka): matka-ajat ja matka sinne jokaisesta vertailtavasta osoitteesta. */
+function KohdeValitsin({ kohde, onAseta, onPoista }: { kohde: Kohde | null; onAseta: (k: Kohde) => void; onPoista: () => void }) {
+  const [muokkaa, setMuokkaa] = useState(false);
+  if (kohde && !muokkaa)
+    return (
+      <div className="mb-6 flex flex-wrap items-baseline gap-x-5 border-l-[3px] border-accent pl-4">
+        <p>
+          Matkat osoitteeseen <strong className="font-semibold">{kohde.nimi}</strong> näkyvät taulukossa.
+        </p>
+        <span className="flex gap-x-5">
+          <button type="button" onClick={() => setMuokkaa(true)} className="linkki min-h-11">
+            Vaihda kohde
+          </button>
+          <button type="button" onClick={onPoista} className="min-h-11 font-medium text-ink-2 underline hover:text-accent">
+            Poista kohde
+          </button>
+        </span>
+      </div>
+    );
+  return (
+    <div className="mb-6 max-w-md">
+      <OsoiteHaku
+        onValitse={(o) => {
+          onAseta({ nimi: o.nimi, lat: o.lat, lon: o.lon });
+          setMuokkaa(false);
+        }}
+        label="Vertaa matkaa osoitteeseen (esim. työpaikka)"
+        placeholder="Kirjoita kohteen osoite"
+        autoFocus={muokkaa}
+      />
+      {muokkaa && (
+        <button type="button" onClick={() => setMuokkaa(false)} className="mt-1 min-h-11 text-sm font-medium text-ink-2 hover:text-ink">
+          Peruuta
+        </button>
       )}
     </div>
   );

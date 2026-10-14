@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import { Vertailu } from "@/components/vertailu/Vertailu";
 import { Ylapalkki } from "@/components/Ylapalkki";
 import { HELSINGIN_KESKUSTA } from "@/lib/data";
@@ -8,7 +9,8 @@ export const metadata: Metadata = {
   description: "Vertaa kolmea osoitetta rinnakkain: neliöhinta, matka-ajat, kävelyajat pysäkille, kauppaan ja lähikouluun sekä liikennemelu.",
 };
 
-// Vertailtavat osoitteet ovat käyttäjän selaimessa (localStorage), joten sivu on staattinen runko ja tiedot haetaan selaimessa.
+// Vertailtavat osoitteet ovat käyttäjän selaimessa (localStorage) tai jaetussa linkissä (?o=…), joten sivu on staattinen
+// runko ja tiedot haetaan selaimessa.
 export default function VertailuSivu() {
   const keskusta = { nimi: "Helsingin keskusta (Rautatientori)", lat: HELSINGIN_KESKUSTA.lat, lon: HELSINGIN_KESKUSTA.lon };
   return (
@@ -23,7 +25,10 @@ export default function VertailuSivu() {
           Hinta, matka-ajat, arjen kävelymatkat ja melu samassa taulukossa. Paras arvo on merkitty joka riville.
         </p>
         <div className="mt-10">
-          <Vertailu keskusta={keskusta} />
+          {/* Jaettu vertailu luetaan URL:sta (useSearchParams) → Suspense-raja staattisen rungon ja selaimen välille. */}
+          <Suspense fallback={<p className="text-muted">Ladataan vertailua…</p>}>
+            <Vertailu keskusta={keskusta} />
+          </Suspense>
         </div>
       </main>
     </>
