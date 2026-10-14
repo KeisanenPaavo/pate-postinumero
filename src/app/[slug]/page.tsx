@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import { HintaKaavio } from "@/components/HintaKaavio";
 import { IkaKaavio, type IkaRyhma } from "@/components/IkaKaavio";
+import { KaavoitusOsio } from "@/components/osoite/Kaavoitus";
 import { Lahiymparisto } from "@/components/osoite/Lahiymparisto";
 import { Koulut, Liikenne, MeluOsio, Osoitepalkki, Yhteenveto } from "@/components/osoite/Osiot";
 import {
@@ -60,6 +61,7 @@ const OSIOT = [
   ["hinnat", "Hinnat"],
   ["liikenne", "Liikenne"],
   ["melu", "Melu"],
+  ["kaavoitus", "Kaavoitus"],
   ["koulut", "Koulut"],
   ["asukkaat", "Asukkaat"],
 ] as const;
@@ -152,7 +154,7 @@ async function AlueSisalto({ params }: Pick<PageProps<"/[slug]">, "params">) {
           <Osoitepalkki keskipiste={alue.keskipiste} alueNimi={alue.nimi} hintaLause={hintaLause} keskusta={helsinki} />
         </Suspense>
         <Suspense fallback={<div className="mt-10 h-96 border-t-[3px] border-ink" />}>
-          <Yhteenveto keskipiste={alue.keskipiste} hinta={yhteenvetoHinta} keskusta={helsinki} />
+          <Yhteenveto keskipiste={alue.keskipiste} hinta={yhteenvetoHinta} keskusta={helsinki} kunta={alue.kunta} />
         </Suspense>
       </header>
 
@@ -183,13 +185,19 @@ async function AlueSisalto({ params }: Pick<PageProps<"/[slug]">, "params">) {
         </Suspense>
       </Osio>
 
-      <Osio nro={5} id="koulut" otsikko="Koulut">
+      <Osio nro={5} id="kaavoitus" otsikko="Kaavoitus ja rakentaminen">
+        <Suspense fallback={<p className="text-muted">Ladataan kaavoitustietoja…</p>}>
+          <KaavoitusOsio keskipiste={alue.keskipiste} pno={alue.pno} kunta={alue.kunta} />
+        </Suspense>
+      </Osio>
+
+      <Osio nro={6} id="koulut" otsikko="Koulut">
         <Suspense fallback={<p className="text-muted">Haetaan kouluja…</p>}>
           <Koulut keskipiste={alue.keskipiste} />
         </Suspense>
       </Osio>
 
-      <Osio nro={6} id="asukkaat" otsikko="Asukkaat" johdanto={asukasJohdanto}>
+      <Osio nro={7} id="asukkaat" otsikko="Asukkaat" johdanto={asukasJohdanto}>
         <VertailuTaulukko alue={p} kunta={k.paavo} alueNimi={alue.nimi} kuntaNimi={k.nimi} />
         <h3 className="mt-10 mb-3 font-semibold">Ikärakenne</h3>
         <IkaKaavio ryhmat={ryhmat} alueNimi={alue.nimi} vertailuNimi={k.nimi} />

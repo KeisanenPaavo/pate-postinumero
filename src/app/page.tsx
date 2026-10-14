@@ -12,6 +12,7 @@ const SISALTO = [
   ["Hinnat", "Neliöhinnat 15 vuoden ajalta kuntaan verrattuna"],
   ["Liikenne", "Matka-ajat keskustaan ja omiin kohteisiisi"],
   ["Melu", "Tie- ja raideliikenteen melu osoitteessa"],
+  ["Kaavoitus", "Vireillä olevat kaavat ja katutyöt lähellä"],
   ["Koulut", "Lähimmät peruskoulut ja lukiot"],
   ["Asukkaat", "Tulot, ikärakenne ja asuminen"],
 ] as const;
@@ -54,7 +55,7 @@ export default function Etusivu() {
           <h2 id="sisalto" className="kapiteeli py-3">
             Raportin sisältö
           </h2>
-          <ol className="grid border-t border-rule sm:grid-cols-3 lg:grid-cols-6">
+          <ol className="grid border-t border-rule sm:grid-cols-3 lg:grid-cols-7">
             {SISALTO.map(([otsikko, teksti], i) => (
               <li key={otsikko} className="flex gap-4 border-b border-rule py-4 sm:block sm:py-5 sm:pr-5 sm:[&:not(:nth-child(3n+1))]:border-l sm:[&:not(:nth-child(3n+1))]:pl-5 lg:border-b-0 lg:[&:not(:first-child)]:border-l lg:[&:not(:first-child)]:pl-5">
                 <span aria-hidden className="font-serif text-[2rem] leading-none text-accent tabular">

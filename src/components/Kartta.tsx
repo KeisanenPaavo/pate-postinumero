@@ -23,10 +23,12 @@ type Taso = {
   tiilet: string;
   lahde: string;
   legenda?: string;
+  /** Teksti selitteen tilalla, jos lähde ei tarjoa selitekuvaa. */
+  eiSelitetta?: string;
   kunnat?: string[]; // näytetään vain näissä kunnissa
 };
 
-const TASOT: Taso[] = [
+export const MELU_TASOT: Taso[] = [
   {
     id: "meluVayla",
     nimi: "Melu: maantiet ja radat",
@@ -51,6 +53,38 @@ const TASOT: Taso[] = [
       "Katujen ja maanteiden melu vuorokauden painotettuna keskiarvona (Lden), Espoon meluselvitys 2022. Asteikko ei ole suoraan vertailukelpoinen päiväajan LAeq-arvoihin.",
     tiilet: wms(ESPOO, "Espoo_tieliikenne Lden_EU (kadut ja maantiet)"),
     lahde: "© Espoon kaupunki",
+    eiSelitetta: "Espoon palvelu ei tarjoa selitettä. Desibelirajat näkyvät Espoon omassa karttapalvelussa (kartat.espoo.fi).",
+    kunnat: ["049"],
+  },
+];
+
+// Kaavoitus ja rakentaminen (Kaavoitus-osio). Helsinki: vektori- ja WMS-aineisto avoimena; Espoo: vain WMS-kuva.
+export const KAAVA_TASOT: Taso[] = [
+  {
+    id: "kaavaHki",
+    nimi: "Vireillä olevat asemakaavat",
+    kuvaus: "Helsingin vireillä olevien asemakaavojen ja asemakaavamuutosten rajaukset (kaavahakemisto).",
+    tiilet: wms(HELSINKI, "avoindata:Kaavahakemisto_alue_kaava_vireilla"),
+    lahde: "© Helsingin kaupunki",
+    legenda: legenda(HELSINKI, "avoindata:Kaavahakemisto_alue_kaava_vireilla"),
+    kunnat: ["091"],
+  },
+  {
+    id: "kaivuHki",
+    nimi: "Katu- ja kaivutyöt",
+    kuvaus: "Kaivuilmoitusten työalueet (katu-, johto- ja kaapelityöt). Mukana myös päättyneitä töitä – ajankohdat listassa.",
+    tiilet: wms(HELSINKI, "avoindata:Kaivuilmoitus_alue"),
+    lahde: "© Helsingin kaupunki",
+    legenda: legenda(HELSINKI, "avoindata:Kaivuilmoitus_alue"),
+    kunnat: ["091"],
+  },
+  {
+    id: "kaavaEspoo",
+    nimi: "Vireillä olevat asemakaavat",
+    kuvaus: "Espoon vireillä olevien asemakaavojen rajaukset.",
+    tiilet: wms(ESPOO, "AsemakaavatVireillaOlevat"),
+    lahde: "© Espoon kaupunki",
+    eiSelitetta: "Espoon palvelu ei tarjoa selitettä eikä kaavojen tietoja avoimena datana. Kaavojen nimet ja vaiheet näkyvät Espoon omassa karttapalvelussa (kartat.espoo.fi).",
     kunnat: ["049"],
   },
 ];
@@ -75,14 +109,26 @@ const RAJA = "postinumeroalue";
 const teemaVari = (nimi: string, varalla: string) =>
   getComputedStyle(document.documentElement).getPropertyValue(nimi).trim() || varalla;
 
-export function Kartta({ piste, onOsoite, pno, kunta }: { piste: Piste; onOsoite: boolean; pno: string; kunta: string }) {
+export function Kartta({
+  piste,
+  onOsoite,
+  pno,
+  kunta,
+  tasot: kaikkiTasot = MELU_TASOT,
+}: {
+  piste: Piste;
+  onOsoite: boolean;
+  pno: string;
+  kunta: string;
+  tasot?: Taso[];
+}) {
   const id = useId();
   const elementti = useRef<HTMLDivElement>(null);
   const kartta = useRef<MapLibreMap | null>(null);
   const merkki = useRef<Marker | null>(null);
   const [valmis, setValmis] = useState(false);
   const [virhe, setVirhe] = useState(false);
-  const tasot = TASOT.filter((t) => !t.kunnat || t.kunnat.includes(kunta));
+  const tasot = kaikkiTasot.filter((t) => !t.kunnat || t.kunnat.includes(kunta));
   const [valittu, setValittu] = useState(tasot[0].id);
   const taso = tasot.find((t) => t.id === valittu) ?? tasot[0];
 
@@ -216,7 +262,7 @@ export function Kartta({ piste, onOsoite, pno, kunta }: { piste: Piste; onOsoite
             // eslint-disable-next-line @next/next/no-img-element
             <img src={taso.legenda} alt={`Selite: ${taso.nimi}`} className="bg-white p-1.5" />
           ) : (
-            <p className="text-[13px] text-muted">Espoon palvelu ei tarjoa selitettä. Desibelirajat näkyvät Espoon omassa karttapalvelussa (kartat.espoo.fi).</p>
+            taso.eiSelitetta && <p className="text-[13px] text-muted">{taso.eiSelitetta}</p>
           )}
           <p className="text-[13px] text-muted">
             <span className="mr-1 inline-block h-0.5 w-4 border-t-2 border-dashed border-ink align-middle" />

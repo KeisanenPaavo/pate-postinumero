@@ -225,6 +225,87 @@ const YLEIS_PADDING = { padding: { top: 36, right: 56, bottom: 44, left: 36 }, m
 const tyhjaReitti = { type: "Feature" as const, properties: {}, geometry: { type: "LineString" as const, coordinates: [] as [number, number][] } };
 const teemaVari = (nimi: string, varalla: string) => getComputedStyle(document.documentElement).getPropertyValue(nimi).trim() || varalla;
 
+// --- Merkkien ryhmittely ------------------------------------------------------------------
+// Lähekkäiset merkit (alle RYHMA_PX näytöllä) yhdistetään numeroksi. Ryhmittely lasketaan näytön pikseleissä,
+// joten se lasketaan uudelleen aina zoomin muuttuessa. Valittu kohde ja asunto eivät ryhmity.
+
+const RYHMA_PX = 36;
+
+type Ryhmittely = {
+  map: MapLibreMap;
+  maplibre: typeof import("maplibre-gl");
+  merkit: Map<string, Marker>;
+  kohteet: Map<string, Kohde>;
+  nakyvat: Set<string>;
+  ryhmat: Marker[];
+  valittu: string | null;
+  onValitse: (k: Kohde) => void;
+};
+
+function ryhmittele({ map, maplibre, merkit, kohteet, nakyvat, ryhmat, valittu, onValitse }: Ryhmittely) {
+  ryhmat.splice(0).forEach((m) => m.remove());
+  const pisteet = [...merkit.entries()].map(([avain, m]) => ({ avain, m, px: map.project(m.getLngLat()) }));
+  const kaytetty = new Set<string>();
+  const nayta = (avain: string, m: Marker) => {
+    if (!nakyvat.has(avain)) m.addTo(map);
+    nakyvat.add(avain);
+  };
+  const piilota = (avain: string, m: Marker) => {
+    if (nakyvat.has(avain)) m.remove();
+    nakyvat.delete(avain);
+  };
+
+  for (const p of pisteet) {
+    if (kaytetty.has(p.avain)) continue;
+    kaytetty.add(p.avain);
+    if (p.avain === valittu) {
+      nayta(p.avain, p.m);
+      continue;
+    }
+    const jasenet = [p, ...pisteet.filter((q) => !kaytetty.has(q.avain) && q.avain !== valittu && p.px.dist(q.px) < RYHMA_PX)];
+    jasenet.forEach((q) => kaytetty.add(q.avain));
+    if (jasenet.length === 1) {
+      nayta(p.avain, p.m);
+      continue;
+    }
+    jasenet.forEach((q) => piilota(q.avain, q.m));
+
+    const ryhmanKohteet = jasenet.map((q) => kohteet.get(q.avain)!).filter(Boolean);
+    const rajat = new maplibre.LngLatBounds(jasenet[0].m.getLngLat(), jasenet[0].m.getLngLat());
+    jasenet.forEach((q) => rajat.extend(q.m.getLngLat()));
+    const el = document.createElement("button");
+    el.type = "button";
+    el.className = "symboli-ryhma";
+    el.textContent = String(jasenet.length);
+    el.setAttribute("aria-label", `${jasenet.length} kohdetta: ${ryhmanKohteet.map((k) => k.nimi).join(", ")}. Lähennä.`);
+    el.addEventListener("click", (e) => {
+      e.stopPropagation();
+      // Lähennetään ryhmään; jos kohteet ovat käytännössä samassa paikassa (alle 20 m, esim. koulu ja lukio
+      // samassa rakennuksessa) tai kartta on jo lähellä, näytetään lista, josta kohteen voi valita.
+      const samassaPaikassa = jasenet.every((q) => q.m.getLngLat().distanceTo(jasenet[0].m.getLngLat()) < 20);
+      if (!samassaPaikassa && map.getZoom() < 17) {
+        map.fitBounds(rajat, { padding: 80, maxZoom: 18, duration: 400 });
+        return;
+      }
+      const lista = document.createElement("div");
+      lista.className = "ryhma-lista";
+      for (const k of ryhmanKohteet) {
+        const nappi = document.createElement("button");
+        nappi.type = "button";
+        nappi.innerHTML = `<span class="symboli symboli-${ryhma(k.ikoni)} symboli-pieni">${symboliHtml(k.ikoni)}</span>`;
+        nappi.append(` ${k.nimi} · ${k.lisa}`);
+        nappi.addEventListener("click", () => {
+          popup.remove();
+          onValitse(k);
+        });
+        lista.append(nappi);
+      }
+      const popup = new maplibre.Popup({ offset: 20, closeButton: true, maxWidth: "280px" }).setLngLat(rajat.getCenter()).setDOMContent(lista).addTo(map);
+    });
+    ryhmat.push(new maplibre.Marker({ element: el }).setLngLat(rajat.getCenter()).addTo(map));
+  }
+}
+
 function LahiKartta({
   lahto,
   onOsoite,
@@ -254,6 +335,29 @@ function LahiKartta({
   });
   const [valmis, setValmis] = useState(false);
   const [virhe, setVirhe] = useState(false);
+  const kohdeKartta = useRef<Map<string, Kohde>>(new Map());
+  const nakyvat = useRef<Set<string>>(new Set());
+  const ryhmaMerkit = useRef<Marker[]>([]);
+  const valittuRef = useRef<string | null>(null);
+  const ryhmitteleNyt = () => {
+    const map = kartta.current;
+    const maplibre = kirjasto.current;
+    if (!map || !maplibre) return;
+    ryhmittele({
+      map,
+      maplibre,
+      merkit: merkit.current,
+      kohteet: kohdeKartta.current,
+      nakyvat: nakyvat.current,
+      ryhmat: ryhmaMerkit.current,
+      valittu: valittuRef.current,
+      onValitse: (k) => valitseRef.current(k),
+    });
+  };
+  const ryhmitteleRef = useRef(ryhmitteleNyt);
+  useEffect(() => {
+    ryhmitteleRef.current = ryhmitteleNyt;
+  });
 
   // Kartan luonti kerran. MapLibre ladataan vasta selaimessa.
   useEffect(() => {
@@ -294,6 +398,7 @@ function LahiKartta({
         map.on("error", () => {
           if (!map.isStyleLoaded()) setVirhe(true);
         });
+        map.on("zoomend", () => ryhmitteleRef.current());
         kirjasto.current = maplibre;
         kartta.current = map;
       } catch {
@@ -327,6 +432,8 @@ function LahiKartta({
 
     // Lähikohteet ensin, asunto viimeisenä, jotta se piirtyy päällimmäiseksi.
     merkit.current.forEach((m) => m.remove());
+    nakyvat.current.clear();
+    kohdeKartta.current = new Map(kohteet.map((k) => [k.avain, k]));
     merkit.current = new Map(
       kohteet.map((k) => {
         const el = merkki(k.ikoni, `${IKONI_NIMI[k.ikoni]}: ${k.nimi}, ${k.lisa}. Näytä kävelyreitti.`);
@@ -334,7 +441,8 @@ function LahiKartta({
           e.stopPropagation();
           valitseRef.current(k);
         });
-        return [k.avain, new maplibre.Marker({ element: el }).setLngLat([k.lon, k.lat]).addTo(map)];
+        // Merkit lisätään kartalle ryhmittelyssä (ryhmittele), joka näyttää ne yksittäin tai ryhmänä.
+        return [k.avain, new maplibre.Marker({ element: el }).setLngLat([k.lon, k.lat])];
       }),
     );
 
@@ -353,6 +461,9 @@ function LahiKartta({
     map.resize();
     yleisnakyma.current = bounds;
     map.fitBounds(bounds, YLEIS_PADDING);
+    ryhmitteleNyt();
+    // asunto lisätään uudelleen, jotta se piirtyy merkkien päälle
+    asunto.current.remove().addTo(map);
     // avain kattaa lahto- ja kohteet-muutokset.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [valmis, avain, onOsoite]);
@@ -365,6 +476,11 @@ function LahiKartta({
     if (!map || !maplibre || !valmis) return;
 
     merkit.current.forEach((m, k) => m.getElement().classList.toggle("symboli-valittu", k === valittu?.avain));
+    // Valittu kohde irrotetaan ryhmästä, jotta sen korostus ja reitti näkyvät.
+    if (valittuRef.current !== (valittu?.avain ?? null)) {
+      valittuRef.current = valittu?.avain ?? null;
+      ryhmitteleNyt();
+    }
     (map.getSource(REITTI) as GeoJSONSource | undefined)?.setData(
       valittu && reitti.data ? { ...tyhjaReitti, geometry: { type: "LineString", coordinates: reitti.data.reitti } } : tyhjaReitti,
     );

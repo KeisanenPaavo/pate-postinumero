@@ -7,6 +7,7 @@ import { Kartta } from "../Kartta";
 import { JakoPainike } from "../JakoPainike";
 import { OsoiteHaku, type Osoite } from "../OsoiteHaku";
 import { useVertailu } from "../vertailu/useVertailu";
+import { pvm, type KaavoitusTiedot } from "./Kaavoitus";
 import {
   OHJEARVO_PAIVA,
   ensisijainenLahikoulu,
@@ -16,6 +17,7 @@ import {
   meluVyohyke,
   minuuttia,
   pisteParam,
+  useJson,
   useKavely,
   useLahella,
   useMatka,
@@ -184,10 +186,12 @@ export function Yhteenveto({
   keskipiste,
   hinta,
   keskusta,
+  kunta,
 }: {
   keskipiste: Piste;
   hinta: { arvo: string; alateksti: string };
   keskusta: Kohde;
+  kunta: string;
 }) {
   const { osoite, lahto } = useOsoite(keskipiste);
   const matka = useMatka(lahto, keskusta);
@@ -204,6 +208,8 @@ export function Yhteenveto({
   const kavelyKauppa = useKavely(lahto, kauppa);
   const kavelyKoulu = useKavely(lahto, koulu ?? null);
   const yli = melu?.db != null && melu.db >= OHJEARVO_PAIVA;
+  // Kaavoitus: vektoriaineisto vain Helsingistä (muualla rivi jätetään pois).
+  const kaava = useJson<KaavoitusTiedot | null>(kunta === "091" ? `/api/kaavoitus?p=${pisteParam(lahto)}&kunta=${kunta}` : null).data;
   const ladataan = "…";
   const keskelta = osoite ? "" : " (alueen keskeltä)";
 
@@ -262,6 +268,21 @@ export function Yhteenveto({
           />
           <Rivi href="#lahella" otsikko="Lähin pysäkki" arvo={rPysakki.arvo} selite={rPysakki.selite} />
           <Rivi href="#lahella" otsikko="Lähin ruokakauppa" arvo={rKauppa.arvo} selite={rKauppa.selite} />
+          {kunta === "091" && (
+            <Rivi
+              href="#kaavoitus"
+              otsikko="Kaavoitus lähellä"
+              arvo={!kaava ? ladataan : kaava.rakennuskielto ? "Rakennuskielto" : `${kaava.kaavat.length} ${kaava.kaavat.length === 1 ? "kaava" : "kaavaa"}`}
+              korostus={!!kaava && (!!kaava.rakennuskielto || kaava.kaavat.some((k) => k.alueella))}
+              selite={
+                !kaava
+                  ? undefined
+                  : kaava.rakennuskielto
+                    ? `asemakaavaa valmistellaan${kaava.rakennuskielto.paattyy ? `, kielto ${pvm(kaava.rakennuskielto.paattyy)} asti` : ""}${kaava.kaavat.length ? ` · ${kaava.kaavat.length} ${kaava.kaavat.length === 1 ? "kaava" : "kaavaa"} vireillä 500 m säteellä` : ""}`
+                    : `vireillä 500 m säteellä${kaava.kaavat.some((k) => k.alueella) ? ", osoite yhden alueella" : ""}${kaava.tyot.length ? ` · ${kaava.tyot.length} ${kaava.tyot.length === 1 ? "katutyö" : "katutyötä"} 200 m säteellä` : ""}`
+              }
+            />
+          )}
           <Rivi
             href="#melu"
             otsikko="Liikennemelu"
