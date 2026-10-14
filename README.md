@@ -29,6 +29,7 @@ Lähteet, rajapinnat ja kattavuus: [docs/datan-saatavuus.md](docs/datan-saatavuu
 
 - `src/app/[slug]` – postinumerosivu, generoidaan staattisesti (esim. `/00530-kallio`). Osoitekohtaiset tiedot
   tulevat parametrista `?p=lat,lon&osoite=...`.
+- `src/app/vertailu` – enintään 3 osoitteen vertailu rinnakkain (osoitteet tallentuvat selaimeen, tiedot samoista API-reiteistä).
 - `src/app/api/{haku,piste,matka,lahella,kavely}` – palvelinpuolen välityspalvelut (Digitransit-avain ei päädy selaimeen),
   tulokset välimuistitetaan `use cache` -funktioissa (`src/lib/palvelut.ts`).
 - `src/lib/data.ts` – generoidun datan lukeminen ja tunnusluvut.

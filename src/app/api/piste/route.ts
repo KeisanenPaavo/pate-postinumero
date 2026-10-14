@@ -1,5 +1,6 @@
 import type { NextRequest } from "next/server";
-import { alueNumerolla, slugify } from "@/lib/data";
+import { alueNumerolla, kunta, slugify } from "@/lib/data";
+import { alueenHinta } from "@/lib/raportti";
 import { lahimmatKoulut, melu, postinumeroPisteelle, pyorista } from "@/lib/palvelut";
 import { lueKoordinaatti, virhe } from "@/lib/http";
 import { oppilaaksiotto } from "@/lib/oppilaaksiotto";
@@ -16,7 +17,13 @@ export async function GET(request: NextRequest) {
   const alue = pno ? alueNumerolla(pno) : undefined;
   if (!alue) return Response.json({ pno, uusimaa: false });
 
-  const perus = { pno, uusimaa: true, slug: slugify(alue) };
+  const perus = {
+    pno,
+    uusimaa: true,
+    slug: slugify(alue),
+    // Vertailusivua varten: alueen nimi, kunta ja neliöhinta samassa muodossa kuin raportin tiivistelmässä.
+    alue: { nimi: alue.nimi, kunta: kunta(alue.kunta).nimi, hinta: alueenHinta(alue) },
+  };
   if (request.nextUrl.searchParams.get("vain") === "alue") return Response.json(perus);
 
   const [m, k, o] = await Promise.allSettled([melu(p, alue.kunta), lahimmatKoulut(p), oppilaaksiotto(p, alue.kunta)]);

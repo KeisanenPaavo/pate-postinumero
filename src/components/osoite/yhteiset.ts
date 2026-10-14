@@ -130,3 +130,51 @@ export const km = (n: number) => `${n.toFixed(1).replace(".", ",")} km`;
 
 /** Kävelyetäisyyden tarkkuus riittää: alle kilometri 10 metrin tarkkuudella, muuten 0,1 km. */
 export const etaisyys = (km: number) => (km < 1 ? `${Math.max(10, Math.round(km * 100) * 10)} m` : `${km.toFixed(1).replace(".", ",")} km`);
+
+// --- Selaimeen tallennettavat listat (vertailu) -------------------------------------------
+
+/**
+ * Pieni localStorage-lista, jonka muutokset näkyvät heti kaikissa komponenteissa (myös toisissa välilehdissä).
+ * Jos selaimen tallennus ei ole käytössä, lista pysyy muistissa sivun ajan.
+ */
+export function selainLista<T>(avain: string, max: number) {
+  const tapahtuma = `${avain}:muutos`;
+  let muistissa = "[]";
+  const lue = () => {
+    try {
+      return localStorage.getItem(avain) ?? muistissa;
+    } catch {
+      return muistissa;
+    }
+  };
+  const tilaa = (cb: () => void) => {
+    window.addEventListener("storage", cb);
+    window.addEventListener(tapahtuma, cb);
+    return () => {
+      window.removeEventListener("storage", cb);
+      window.removeEventListener(tapahtuma, cb);
+    };
+  };
+  const jasenna = (raw: string): T[] => {
+    try {
+      const v = JSON.parse(raw);
+      return Array.isArray(v) ? v.slice(0, max) : [];
+    } catch {
+      return [];
+    }
+  };
+  const tallenna = (lista: T[]) => {
+    muistissa = JSON.stringify(lista.slice(0, max));
+    try {
+      localStorage.setItem(avain, muistissa);
+    } catch {
+      // selaimen tallennus ei käytössä – lista pysyy muistissa
+    }
+    window.dispatchEvent(new Event(tapahtuma));
+  };
+  return { lue, tilaa, jasenna, tallenna, max };
+}
+
+export type Vertailtava = Kohde;
+export const VERTAILU = selainLista<Vertailtava>("vertailu", 3);
+export const samaPiste = (a: Piste, b: Piste) => Math.abs(a.lat - b.lat) < 1e-4 && Math.abs(a.lon - b.lon) < 1e-4;

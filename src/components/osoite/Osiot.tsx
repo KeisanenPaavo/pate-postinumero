@@ -1,9 +1,11 @@
 "use client";
 
+import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useMemo, useState, useSyncExternalStore } from "react";
 import { Kartta } from "../Kartta";
 import { OsoiteHaku, type Osoite } from "../OsoiteHaku";
+import { useVertailu } from "../vertailu/useVertailu";
 import {
   OHJEARVO_PAIVA,
   ensisijainenLahikoulu,
@@ -100,10 +102,11 @@ export function Osoitepalkki({
         {virkkeet.join(" ") || " "}
       </p>
       {osoite && !muokkaa ? (
-        <p className="mt-3">
+        <p className="mt-3 flex flex-wrap items-center gap-x-6">
           <button type="button" onClick={() => setMuokkaa(true)} className="linkki min-h-11">
             Vaihda osoite
           </button>
+          <VertailuPainike osoite={osoite} />
         </p>
       ) : (
         <div className="mt-6 max-w-xl">
@@ -126,6 +129,28 @@ export function Osoitepalkki({
         </div>
       )}
     </div>
+  );
+}
+
+/** Tallentaa raportin osoitteen vertailuun (enintään 3) tai kertoo, että se on jo siellä. */
+function VertailuPainike({ osoite }: { osoite: Kohde }) {
+  const v = useVertailu();
+  if (v.onko(osoite))
+    return (
+      <Link href="/vertailu" className="linkki inline-flex min-h-11 items-center">
+        Vertailussa ({v.kohteet.length}) – avaa vertailu
+      </Link>
+    );
+  if (v.taynna)
+    return (
+      <Link href="/vertailu" className="linkki inline-flex min-h-11 items-center">
+        Vertailu täynnä (3) – avaa vertailu
+      </Link>
+    );
+  return (
+    <button type="button" onClick={() => v.lisaa({ nimi: osoite.nimi, lat: osoite.lat, lon: osoite.lon })} className="linkki min-h-11">
+      + Lisää vertailuun
+    </button>
   );
 }
 
@@ -302,6 +327,12 @@ function jasennaOmat(raw: string): Kohde[] {
   } catch {
     return [];
   }
+}
+
+/** Käyttäjän omat kohteet (esim. työpaikka), jotka tallentuvat selaimeen. Käytetään myös vertailussa. */
+export function useOmatKohteet() {
+  const raw = useSyncExternalStore(tilaaOmat, lueOmatRaw, () => "[]");
+  return useMemo(() => jasennaOmat(raw), [raw]);
 }
 
 export function Liikenne({ keskipiste, oletuskohteet }: { keskipiste: Piste; oletuskohteet: Kohde[] }) {

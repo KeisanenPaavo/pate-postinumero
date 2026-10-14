@@ -19,7 +19,8 @@ import {
   type Paavo,
 } from "@/lib/data";
 import { Ylapalkki } from "@/components/Ylapalkki";
-import { euroa, genetiivi, lukuna, osuus, prosentti } from "@/lib/muotoilu";
+import { alueenHinta, suhdeKuntaan } from "@/lib/raportti";
+import { euroa, lukuna, osuus, prosentti } from "@/lib/muotoilu";
 
 export function generateStaticParams() {
   return kaikkiAlueet().map((a) => ({ slug: slugify(a) }));
@@ -78,20 +79,6 @@ export default function AluePage({ params }: PageProps<"/[slug]">) {
   );
 }
 
-/** "+12 %" / "−15 %" */
-const muutos = (uusi: number, vanha: number) => {
-  const pct = Math.round((uusi / vanha - 1) * 100);
-  return `${pct >= 0 ? "+" : "−"}${Math.abs(pct)} %`;
-};
-
-/** Hinta suhteessa kuntaan: "8 % yli Helsingin keskitason" / "Helsingin keskitasoa". */
-function suhdeKuntaan(arvo: number | null | undefined, vertailu: number | null | undefined, kuntaNimi: string) {
-  if (arvo == null || !vertailu) return null;
-  const pct = Math.round((arvo / vertailu - 1) * 100);
-  if (Math.abs(pct) < 3) return `${genetiivi(kuntaNimi)} keskitasoa`;
-  return `${Math.abs(pct)} % ${pct > 0 ? "yli" : "alle"} ${genetiivi(kuntaNimi)} keskitason`;
-}
-
 async function AlueSisalto({ params }: Pick<PageProps<"/[slug]">, "params">) {
   const alue = alueSlugilla((await params).slug);
   if (!alue) notFound();
@@ -100,8 +87,6 @@ async function AlueSisalto({ params }: Pick<PageProps<"/[slug]">, "params">) {
 
   const viimeisin = alue.hinnat.at(-1);
   const hinta = viimeisin ? kerrostaloHinta(viimeisin) : null;
-  const viiden = alue.hinnat.find((h) => h.vuosi === (viimeisin?.vuosi ?? 0) - 5);
-  const hinta5 = viiden ? kerrostaloHinta(viiden) : null;
   const kuntaHinta = k.hinnat.at(-1);
   const sarjat = hintaSarjat(alue);
   const suhde = suhdeKuntaan(hinta?.hinta, kuntaHinta?.kerrostalot, k.nimi);
@@ -118,14 +103,8 @@ async function AlueSisalto({ params }: Pick<PageProps<"/[slug]">, "params">) {
       : []),
   ];
 
-  const yhteenvetoHinta = hinta
-    ? {
-        arvo: `${euroa(hinta.hinta)}/m²`,
-        alateksti: [suhde, hinta5 ? `${muutos(hinta.hinta, hinta5.hinta)} vuodesta ${viiden!.vuosi}` : `${hinta.lkm} kauppaa ${viimeisin!.vuosi}`]
-          .filter(Boolean)
-          .join(" · "),
-      }
-    : { arvo: `${euroa(kuntaHinta?.kerrostalot)}/m²`, alateksti: `${k.nimi} keskimäärin – alueelta liian vähän kauppoja` };
+  const { arvo: hArvo, alateksti: hAlateksti } = alueenHinta(alue);
+  const yhteenvetoHinta = { arvo: hArvo, alateksti: hAlateksti };
   const hintaLause = hinta && suhde ? `neliöhinta ${suhde}` : null;
 
   // Hintahistorian huippu (vain alueen oma sarja).
