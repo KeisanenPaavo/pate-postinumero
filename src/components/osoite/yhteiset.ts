@@ -23,7 +23,28 @@ export type Lahella = {
   pysakkiSade: number | null;
   junaAsemat: JunaAsema[] | null;
 };
-export type PisteTiedot = { melu: Melu | null; koulut: Koulu[] | null };
+export type Lahikoulu = { nimi: string; luokat: "1–6" | "7–9"; kieli: "suomi" | "ruotsi"; lat: number | null; lon: number | null; km: number | null };
+export type Oppilaaksiotto = {
+  kunta: string;
+  lahde: string;
+  lukuvuosi: string | null;
+  koulut: Lahikoulu[];
+  oppilasalue: { nimi: string; koulut: { nimi: string; lat: number; lon: number; km: number }[] } | null;
+};
+export type PisteTiedot = { melu: Melu | null; koulut: Koulu[] | null; oppilaaksiotto: Oppilaaksiotto | null };
+
+/**
+ * Tiivistelmän ja kartan "lähikoulu": Helsingissä suomenkielinen 1–6-koulu oppilaaksiottoalueelta,
+ * Espoossa oppilasalueen lähin koulu. null, jos kunnalta ei ole aluedataa.
+ */
+export function ensisijainenLahikoulu(o: Oppilaaksiotto | null | undefined) {
+  if (!o) return null;
+  const hki = o.koulut.find((k) => k.kieli === "suomi" && k.luokat === "1–6" && k.lat != null && k.lon != null);
+  if (hki) return { nimi: hki.nimi, lat: hki.lat!, lon: hki.lon!, km: hki.km ?? 0, selite: "oppilaaksiottoalue, luokat 1–6" };
+  const alue = o.oppilasalue?.koulut[0];
+  if (alue) return { ...alue, selite: `lähin koulu, ${o.oppilasalue!.nimi}` };
+  return null;
+}
 
 export const pisteParam = (p: Piste) => `${p.lat.toFixed(5)},${p.lon.toFixed(5)}`;
 

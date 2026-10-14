@@ -6,6 +6,7 @@ import { Kartta } from "../Kartta";
 import { OsoiteHaku, type Osoite } from "../OsoiteHaku";
 import {
   OHJEARVO_PAIVA,
+  ensisijainenLahikoulu,
   etaisyys,
   km,
   meluTuomio,
@@ -18,6 +19,7 @@ import {
   useOsoite,
   usePisteTiedot,
   type Kohde,
+  type Oppilaaksiotto,
   type Piste,
   type Tuomio,
 } from "./yhteiset";
@@ -159,7 +161,9 @@ export function Yhteenveto({
   const matka = useMatka(lahto, keskusta);
   const tiedot = usePisteTiedot(lahto);
   const melu = osoite && tiedot.data ? meluTuomio(tiedot.data.melu) : null;
-  const koulu = tiedot.data?.koulut?.find((k) => /perus/i.test(k.tyyppi)) ?? tiedot.data?.koulut?.[0];
+  // Lähikoulu oppilaaksiottoalueelta (Helsinki, Espoo); muualla lähin peruskoulu linnuntietä.
+  const lahikoulu = ensisijainenLahikoulu(tiedot.data?.oppilaaksiotto);
+  const koulu = lahikoulu ?? tiedot.data?.koulut?.find((k) => /perus/i.test(k.tyyppi)) ?? tiedot.data?.koulut?.[0];
   const lahella = useLahella(lahto);
   const pysakki = lahella.data?.pysakit?.[0] ?? null;
   const kauppa = lahella.data?.kaupat?.[0] ?? null;
@@ -200,7 +204,7 @@ export function Yhteenveto({
     lahellaHaku,
   );
   const rKauppa = kavelyRivi(kauppa, kauppa?.km, kavelyKauppa, "", lahellaHaku);
-  const rKoulu = kavelyRivi(koulu, koulu?.km, kavelyKoulu, "", { virhe: tiedot.virhe, valmis: !!tiedot.data });
+  const rKoulu = kavelyRivi(koulu, koulu?.km, kavelyKoulu, lahikoulu ? ` (${lahikoulu.selite})` : "", { virhe: tiedot.virhe, valmis: !!tiedot.data });
 
   return (
     <section aria-labelledby="tiivistelma" className="mt-10 border-t-[3px] border-ink">
@@ -247,7 +251,7 @@ export function Yhteenveto({
           />
           <Rivi
             href="#koulut"
-            otsikko="Lähin peruskoulu"
+            otsikko={lahikoulu ? "Lähikoulu" : "Lähin peruskoulu"}
             arvo={rKoulu.arvo}
             selite={rKoulu.selite}
           />
@@ -497,8 +501,11 @@ export function MeluOsio({ keskipiste, pno, kunta }: { keskipiste: Piste; pno: s
 export function Koulut({ keskipiste }: { keskipiste: Piste }) {
   const { osoite, lahto } = useOsoite(keskipiste);
   const tiedot = usePisteTiedot(lahto);
+  const o = tiedot.data?.oppilaaksiotto;
   return (
     <div>
+      {tiedot.data && <Lahikoulut o={o ?? null} osoite={!!osoite} />}
+      <h3 className="mt-8 mb-2 font-semibold">Lähimmät koulut</h3>
       <p className="mb-4 max-w-[640px]">Lähimmät koulut {osoite ? "osoitteesta" : "alueen keskeltä"} linnuntietä.</p>
       {tiedot.data?.koulut ? (
         <ol className="border-t border-ink">
@@ -515,8 +522,70 @@ export function Koulut({ keskipiste }: { keskipiste: Piste }) {
         <p className="text-muted">{tiedot.virhe ? "Koulujen haku epäonnistui. Yritä myöhemmin uudelleen." : "Haetaan kouluja…"}</p>
       )}
       <p className="mt-2 text-[13px] text-muted">
-        Lähikoulun määrää kunnan oppilaaksiottoalue, ei etäisyys. Lähde: Tilastokeskus, oppilaitosrekisteri.
+        Lähde: Tilastokeskus, oppilaitosrekisteri; sijainnit pääkaupunkiseudulla kaupunkien palvelukartasta.
       </p>
+    </div>
+  );
+}
+
+/** Oppilaaksiottoalueen lähikoulut: Helsingissä koulukohtaisesti, Espoossa oppilasalue ja sen koulut. */
+function Lahikoulut({ o, osoite }: { o: Oppilaaksiotto | null; osoite: boolean }) {
+  const keskelta = osoite ? "" : " Tiedot koskevat alueen keskipistettä – syötä osoite, niin lähikoulu katsotaan juuri sille kohdalle.";
+  if (!o)
+    return (
+      <div>
+        <h3 className="mb-2 font-semibold">Lähikoulu</h3>
+        <p className="max-w-[640px]">
+          Lähikoulun määrää kunnan oppilaaksiottoalue, ei etäisyys. Tämä kunta ei julkaise alueita avoimena datana, joten tarkista
+          lähikoulu kunnan sivuilta. Alla lähimmät koulut linnuntietä.
+        </p>
+      </div>
+    );
+  const kieli = (k: "suomi" | "ruotsi") => (k === "suomi" ? "suomenkielinen" : "ruotsinkielinen");
+  return (
+    <div>
+      <h3 className="mb-2 font-semibold">Lähikoulu{o.lukuvuosi ? ` lukuvuonna ${o.lukuvuosi}` : ""}</h3>
+      {o.oppilasalue && (
+        <div>
+          <p className="mb-3 max-w-[640px]">
+            Osoite kuuluu <strong className="font-semibold">{o.oppilasalue.nimi.replace(/oppilasalue$/, "oppilasalueeseen")}</strong>. Espoo
+            osoittaa suomenkielisen lähikoulun tämän alueen kouluista – yleensä lähimmästä, mutta kaupunki päättää sen
+            oppilaskohtaisesti.{keskelta}
+          </p>
+          <ol className="max-w-[640px] border-t border-ink">
+            {o.oppilasalue.koulut.slice(0, 8).map((k) => (
+              <li key={k.nimi} className="flex items-baseline justify-between gap-4 border-b border-rule py-2.5 text-[15px]">
+                <span>{k.nimi}</span>
+                <span className="font-semibold whitespace-nowrap tabular">{km(k.km)}</span>
+              </li>
+            ))}
+          </ol>
+        </div>
+      )}
+      {o.koulut.length > 0 && (
+        <div className={o.oppilasalue ? "mt-5" : ""}>
+          <p className="mb-3 max-w-[640px]">
+            {o.kunta === "091"
+              ? "Osoitteen oppilaaksiottoalueen koulut, joihin oppilas ensisijaisesti osoitetaan."
+              : "Ruotsinkielinen lähikoulu osoitteen oppilaaksiottoalueelta."}
+            {o.oppilasalue ? "" : keskelta}
+          </p>
+          <table className="w-full max-w-[640px] text-left text-[15px]">
+            <tbody className="border-t border-ink">
+              {o.koulut.map((k) => (
+                <tr key={`${k.kieli}${k.luokat}`} className="border-b border-rule">
+                  <th scope="row" className="py-2.5 pr-4 align-top font-normal text-muted whitespace-nowrap">
+                    {kieli(k.kieli)}, {k.luokat}
+                  </th>
+                  <td className="py-2.5 font-semibold">{k.nimi}</td>
+                  <td className="py-2.5 pl-3 text-right whitespace-nowrap tabular">{k.km != null ? km(k.km) : ""}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <p className="mt-2 text-[13px] text-muted">Lähde: {o.lahde}. Etäisyydet linnuntietä.</p>
     </div>
   );
 }

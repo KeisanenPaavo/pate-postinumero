@@ -13,6 +13,7 @@
     "data:keskustat": "node --env-file=.env scripts/etl/keskustat.mjs",
     "data:palvelut": "node scripts/etl/palvelupisteet.mjs",
     "data:koulut": "node scripts/etl/koulut.mjs",
+    "data:oppilasalueet": "node scripts/etl/oppilasalueet.mjs",
     "tarkista:piste": "node scripts/check/piste.mjs"
   },
   "dependencies": {

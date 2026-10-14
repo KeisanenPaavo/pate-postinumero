@@ -55,11 +55,20 @@ export function Lahiymparisto({ keskipiste }: { keskipiste: Piste }) {
   const tiedot = usePisteTiedot(lahto);
   const [valittuAvain, setValittuAvain] = useState<string | null>(null);
 
-  // Kartalle 3 lähintä peruskoulua ja lähin lukio (koko lista Koulut-osiossa).
+  // Kartalle oppilaaksiottoalueen lähikoulut (suomenkieliset; Espoossa alueen lähin koulu) sekä 3 lähintä
+  // peruskoulua ja lähin lukio (koko lista Koulut-osiossa). Sama koulu vain kerran.
   const kaikkiKoulut = tiedot.data?.koulut ?? [];
-  const koulut = [...kaikkiKoulut.filter((k) => k.tyyppi !== "Lukiot").slice(0, 3), ...kaikkiKoulut.filter((k) => k.tyyppi === "Lukiot").slice(0, 1)].sort(
-    (a, b) => a.km - b.km,
-  );
+  const o = tiedot.data?.oppilaaksiotto;
+  const lahikoulut = [
+    ...(o?.koulut ?? [])
+      .filter((k) => k.kieli === "suomi" && k.lat != null && k.lon != null)
+      .map((k) => ({ nimi: k.nimi, lat: k.lat!, lon: k.lon!, km: k.km ?? 0, tyyppi: `lähikoulu, luokat ${k.luokat}` })),
+    ...(o?.oppilasalue?.koulut.slice(0, 1) ?? []).map((k) => ({ ...k, tyyppi: "oppilasalueen lähin koulu" })),
+  ];
+  const muut = [...kaikkiKoulut.filter((k) => k.tyyppi !== "Lukiot").slice(0, 3), ...kaikkiKoulut.filter((k) => k.tyyppi === "Lukiot").slice(0, 1)];
+  const koulut = [...lahikoulut, ...muut]
+    .filter((k, i, kaikki) => kaikki.findIndex((x) => x.nimi === k.nimi) === i)
+    .sort((a, b) => a.km - b.km);
   // Juna-asemat näytetään vain, jos niitä on 3 km säteellä.
   const junaAsemat = lahella.data?.junaAsemat ?? [];
 
@@ -76,7 +85,7 @@ export function Lahiymparisto({ keskipiste }: { keskipiste: Piste }) {
   });
   const kohteet: Kohde[] = [
     ...(lahella.data?.kaupat ?? []).map((k) => kohde("kauppa", "kauppa", k, k.tyyppi, k.km * 1000)),
-    ...koulut.map((k) => kohde("koulu", "koulu", k, k.tyyppi.toLowerCase().replace(/t$/, ""), k.km * 1000)),
+    ...koulut.map((k) => kohde("koulu", "koulu", k, k.tyyppi.startsWith("lähikoulu") || k.tyyppi.startsWith("oppilasalueen") ? k.tyyppi : k.tyyppi.toLowerCase().replace(/t$/, ""), k.km * 1000)),
     ...(lahella.data?.paivakodit ?? []).map((k) => kohde("paivakoti", "paivakoti", k, null, k.km * 1000)),
     ...(lahella.data?.pysakit ?? []).map((s) =>
       kohde("pysakki", ikoniKulkuneuvolle(s.kulkuneuvo), s, `${s.kulkuneuvo} ${s.linjat.slice(0, 5).join(", ")}${s.linjat.length > 5 ? " …" : ""}`, s.metrit),

@@ -2,8 +2,9 @@ import type { NextRequest } from "next/server";
 import { alueNumerolla, slugify } from "@/lib/data";
 import { lahimmatKoulut, melu, postinumeroPisteelle, pyorista } from "@/lib/palvelut";
 import { lueKoordinaatti, virhe } from "@/lib/http";
+import { oppilaaksiotto } from "@/lib/oppilaaksiotto";
 
-// Osoitekohtaiset tiedot: postinumero, melu ja lähimmät koulut.
+// Osoitekohtaiset tiedot: postinumero, melu, lähimmät koulut ja oppilaaksiottoalueen lähikoulut.
 // ?p=lat,lon            → kaikki
 // ?p=lat,lon&vain=alue  → vain postinumero ja sivun slug (hakukentän ohjausta varten)
 export async function GET(request: NextRequest) {
@@ -18,7 +19,7 @@ export async function GET(request: NextRequest) {
   const perus = { pno, uusimaa: true, slug: slugify(alue) };
   if (request.nextUrl.searchParams.get("vain") === "alue") return Response.json(perus);
 
-  const [m, k] = await Promise.allSettled([melu(p, alue.kunta), lahimmatKoulut(p)]);
+  const [m, k, o] = await Promise.allSettled([melu(p, alue.kunta), lahimmatKoulut(p), oppilaaksiotto(p, alue.kunta)]);
   const arvo = <T,>(r: PromiseSettledResult<T>) => (r.status === "fulfilled" ? r.value : null);
-  return Response.json({ ...perus, melu: arvo(m), koulut: arvo(k) });
+  return Response.json({ ...perus, melu: arvo(m), koulut: arvo(k), oppilaaksiotto: arvo(o) });
 }

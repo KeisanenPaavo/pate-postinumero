@@ -118,7 +118,7 @@ export async function melu(p: Piste, kuntanro: string): Promise<Melu> {
 // --- Koulut (oppilaitosrekisteri + pääkaupunkiseudun palvelukartta, scripts/etl/koulut.mjs) -----------
 
 // Rekisterin sijainnit ovat osin pielessä (Espoo, Vantaa); ETL korjaa ne kaupunkien palvelukartasta.
-const oppilaitokset = (raakaKoulut as unknown as { koulut: [number, number, string, string][] }).koulut.map(([lat, lon, nimi, tyyppi]) => ({
+export const oppilaitokset = (raakaKoulut as unknown as { koulut: [number, number, string, string][] }).koulut.map(([lat, lon, nimi, tyyppi]) => ({
   nimi,
   tyyppi,
   lat,

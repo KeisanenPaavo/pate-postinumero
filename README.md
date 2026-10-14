@@ -17,6 +17,7 @@ npm run dev               # http://localhost:3000
 |---|---|
 | `npm run data` | Hakee hinnat ja Paavo-tiedot → `data/generated/uusimaa.json` (sivusto lukee tämän buildissa) |
 | `npm run data:koulut` | Peruskoulut ja lukiot: oppilaitosrekisteri, sijainnit korjattu pääkaupunkiseudun palvelukartasta → `data/generated/koulut.json` |
+| `npm run data:oppilasalueet` | Espoon oppilaaksiottoalueet → `data/generated/oppilasalueet-espoo.json` (Helsingin alueet haetaan ajonaikaisesti) |
 | `npm run data:palvelut` | Hakee Uudenmaan ruokakaupat ja päiväkodit OpenStreetMapista → `data/generated/palvelupisteet.json` |
 | `npm run data:keskustat` | Geokoodaa kuntakeskukset → `data/config/keskustat.json` |
 | `npm run tarkista:piste -- <lat> <lon>` | Testaa pistekyselyt (postinumero, melu, koulut) |
