@@ -8,6 +8,7 @@ const ESIMERKIT = ["00530", "02100", "01300", "04400"];
 
 // Samat osiot ja numerot kuin raporttisivulla.
 const SISALTO = [
+  ["Lähiympäristö", "Kaupat, koulut, päiväkodit ja pysäkit kartalla"],
   ["Hinnat", "Neliöhinnat 15 vuoden ajalta kuntaan verrattuna"],
   ["Liikenne", "Matka-ajat keskustaan ja omiin kohteisiisi"],
   ["Melu", "Tie- ja raideliikenteen melu osoitteessa"],
@@ -53,9 +54,9 @@ export default function Etusivu() {
           <h2 id="sisalto" className="kapiteeli py-3">
             Raportin sisältö
           </h2>
-          <ol className="grid border-t border-rule sm:grid-cols-5">
+          <ol className="grid border-t border-rule sm:grid-cols-3 lg:grid-cols-6">
             {SISALTO.map(([otsikko, teksti], i) => (
-              <li key={otsikko} className="flex gap-4 border-b border-rule py-4 sm:block sm:border-b-0 sm:py-5 sm:pr-5 sm:not-first:border-l sm:not-first:pl-5">
+              <li key={otsikko} className="flex gap-4 border-b border-rule py-4 sm:block sm:py-5 sm:pr-5 sm:[&:not(:nth-child(3n+1))]:border-l sm:[&:not(:nth-child(3n+1))]:pl-5 lg:border-b-0 lg:[&:not(:first-child)]:border-l lg:[&:not(:first-child)]:pl-5">
                 <span aria-hidden className="font-serif text-[2rem] leading-none text-accent tabular">
                   {String(i + 1).padStart(2, "0")}
                 </span>

@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import { HintaKaavio } from "@/components/HintaKaavio";
 import { IkaKaavio, type IkaRyhma } from "@/components/IkaKaavio";
+import { Lahiymparisto } from "@/components/osoite/Lahiymparisto";
 import { Koulut, Liikenne, MeluOsio, Osoitepalkki, Yhteenveto } from "@/components/osoite/Osiot";
 import {
   HELSINGIN_KESKUSTA,
@@ -54,6 +55,7 @@ function ikaOsuudet(p: Paavo) {
 }
 
 const OSIOT = [
+  ["lahella", "Lähiympäristö"],
   ["hinnat", "Hinnat"],
   ["liikenne", "Liikenne"],
   ["melu", "Melu"],
@@ -175,7 +177,13 @@ async function AlueSisalto({ params }: Pick<PageProps<"/[slug]">, "params">) {
         </Suspense>
       </header>
 
-      <Osio nro={1} id="hinnat" otsikko="Hinnat" johdanto={hintaJohdanto}>
+      <Osio nro={1} id="lahella" otsikko="Lähiympäristö">
+        <Suspense fallback={<p className="text-muted">Ladataan karttaa…</p>}>
+          <Lahiymparisto keskipiste={alue.keskipiste} />
+        </Suspense>
+      </Osio>
+
+      <Osio nro={2} id="hinnat" otsikko="Hinnat" johdanto={hintaJohdanto}>
         {sarjat.some((s) => s.alue != null) && <HintaKaavio data={sarjat} alueNimi={alue.nimi} kuntaNimi={k.nimi} />}
         <HuoneHinnat alue={alue} />
         <p className="mt-3 text-[13px] text-muted">
@@ -184,25 +192,25 @@ async function AlueSisalto({ params }: Pick<PageProps<"/[slug]">, "params">) {
         </p>
       </Osio>
 
-      <Osio nro={2} id="liikenne" otsikko="Liikenne">
+      <Osio nro={3} id="liikenne" otsikko="Liikenne">
         <Suspense fallback={<p className="text-muted">Lasketaan reittejä…</p>}>
           <Liikenne keskipiste={alue.keskipiste} oletuskohteet={oletuskohteet} />
         </Suspense>
       </Osio>
 
-      <Osio nro={3} id="melu" otsikko="Melu">
+      <Osio nro={4} id="melu" otsikko="Melu">
         <Suspense fallback={<p className="text-muted">Ladataan melutietoja…</p>}>
           <MeluOsio keskipiste={alue.keskipiste} pno={alue.pno} kunta={alue.kunta} />
         </Suspense>
       </Osio>
 
-      <Osio nro={4} id="koulut" otsikko="Koulut">
+      <Osio nro={5} id="koulut" otsikko="Koulut">
         <Suspense fallback={<p className="text-muted">Haetaan kouluja…</p>}>
           <Koulut keskipiste={alue.keskipiste} />
         </Suspense>
       </Osio>
 
-      <Osio nro={5} id="asukkaat" otsikko="Asukkaat" johdanto={asukasJohdanto}>
+      <Osio nro={6} id="asukkaat" otsikko="Asukkaat" johdanto={asukasJohdanto}>
         <VertailuTaulukko alue={p} kunta={k.paavo} alueNimi={alue.nimi} kuntaNimi={k.nimi} />
         <h3 className="mt-10 mb-3 font-semibold">Ikärakenne</h3>
         <IkaKaavio ryhmat={ryhmat} alueNimi={alue.nimi} vertailuNimi={k.nimi} />

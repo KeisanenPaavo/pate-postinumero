@@ -40,6 +40,14 @@ export function OsoiteHaku({
   const [virhe, setVirhe] = useState<string | null>(null);
   const [vastattu, setVastattu] = useState<string | null>(null); // kysely, johon osumat vastaavat
   const pyynto = useRef(0);
+  // Listan sulku viivästetään blurissa (klikkaus ehdotukseen ehtii ensin). Ajastin perutaan, jos kenttä saa
+  // fokuksen takaisin tai siihen kirjoitetaan – muuten vanha ajastin sulkisi listan kesken kirjoittamisen.
+  const sulku = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const avaa = () => {
+    if (sulku.current) clearTimeout(sulku.current);
+    sulku.current = null;
+    setAuki(true);
+  };
   const q = teksti.trim();
 
   const alueOsumat: Ehdotus[] =
@@ -107,11 +115,13 @@ export function OsoiteHaku({
           placeholder={placeholder}
           onChange={(e) => {
             setTeksti(e.target.value);
-            setAuki(true);
+            avaa();
             setAktiivinen(-1);
           }}
-          onFocus={() => setAuki(true)}
-          onBlur={() => setTimeout(() => setAuki(false), 150)}
+          onFocus={avaa}
+          onBlur={() => {
+            sulku.current = setTimeout(() => setAuki(false), 150);
+          }}
           onKeyDown={(e) => {
             if (e.key === "ArrowDown") {
               e.preventDefault();

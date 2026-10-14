@@ -11,6 +11,8 @@
     "lint": "eslint",
     "data": "node scripts/etl/build-alueet.mjs",
     "data:keskustat": "node --env-file=.env scripts/etl/keskustat.mjs",
+    "data:palvelut": "node scripts/etl/palvelupisteet.mjs",
+    "data:koulut": "node scripts/etl/koulut.mjs",
     "tarkista:piste": "node scripts/check/piste.mjs"
   },
   "dependencies": {

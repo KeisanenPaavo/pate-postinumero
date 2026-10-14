@@ -16,6 +16,8 @@ npm run dev               # http://localhost:3000
 | Komento | Mitä tekee |
 |---|---|
 | `npm run data` | Hakee hinnat ja Paavo-tiedot → `data/generated/uusimaa.json` (sivusto lukee tämän buildissa) |
+| `npm run data:koulut` | Peruskoulut ja lukiot: oppilaitosrekisteri, sijainnit korjattu pääkaupunkiseudun palvelukartasta → `data/generated/koulut.json` |
+| `npm run data:palvelut` | Hakee Uudenmaan ruokakaupat ja päiväkodit OpenStreetMapista → `data/generated/palvelupisteet.json` |
 | `npm run data:keskustat` | Geokoodaa kuntakeskukset → `data/config/keskustat.json` |
 | `npm run tarkista:piste -- <lat> <lon>` | Testaa pistekyselyt (postinumero, melu, koulut) |
 
@@ -26,6 +28,6 @@ Lähteet, rajapinnat ja kattavuus: [docs/datan-saatavuus.md](docs/datan-saatavuu
 
 - `src/app/[slug]` – postinumerosivu, generoidaan staattisesti (esim. `/00530-kallio`). Osoitekohtaiset tiedot
   tulevat parametrista `?p=lat,lon&osoite=...`.
-- `src/app/api/{haku,piste,matka}` – palvelinpuolen välityspalvelut (Digitransit-avain ei päädy selaimeen),
+- `src/app/api/{haku,piste,matka,lahella,kavely}` – palvelinpuolen välityspalvelut (Digitransit-avain ei päädy selaimeen),
   tulokset välimuistitetaan `use cache` -funktioissa (`src/lib/palvelut.ts`).
 - `src/lib/data.ts` – generoidun datan lukeminen ja tunnusluvut.

@@ -1,6 +1,14 @@
 import "server-only";
 import { cacheLife } from "next/cache";
+import raakaKoulut from "../../data/generated/koulut.json";
+import raakaPalvelupisteet from "../../data/generated/palvelupisteet.json";
 import type { Piste } from "./data";
+
+// Muoto: scripts/etl/palvelupisteet.mjs – [lat, lon, nimi, tyyppi?]
+const palvelupisteet = raakaPalvelupisteet as unknown as {
+  kaupat: [number, number, string, "s" | "l"][];
+  paivakodit: [number, number, string][];
+};
 
 // Reaaliaikaiset pistekyselyt ulkoisiin rajapintoihin. Kaikki tulokset välimuistitetaan
 // pyöristetyillä koordinaateilla, jotta samaa osoitetta ei kysytä toistuvasti.
@@ -107,26 +115,15 @@ export async function melu(p: Piste, kuntanro: string): Promise<Melu> {
   return { maantiet: { paiva: mp, yo: my }, rautatiet: { paiva: rp, yo: ry }, helsinkiYhteismelu: hki };
 }
 
-// --- Koulut (Tilastokeskuksen oppilaitosrekisteri) ----------------------------------
+// --- Koulut (oppilaitosrekisteri + pääkaupunkiseudun palvelukartta, scripts/etl/koulut.mjs) -----------
 
-type Oppilaitos = { nimi: string; tyyppi: string; lat: number; lon: number };
-
-async function oppilaitokset(): Promise<Oppilaitos[]> {
-  "use cache";
-  cacheLife("weeks");
-  const js = await getJson<{ features: { geometry: { coordinates: [number, number] }; properties: { onimi: string; oltyp_nimi: string } }[] }>(
-    "https://geo.stat.fi/geoserver/wfs",
-    {
-      service: "WFS", version: "1.1.0", request: "GetFeature", typeName: "oppilaitokset:oppilaitokset",
-      outputFormat: "application/json", srsName: "EPSG:4326", propertyName: "onimi,oltyp_nimi,geom",
-      // GeoServer tulkitsee tämän bboxin järjestyksessä lon,lat (testattu).
-      bbox: `${UUSIMAA_BBOX.minLon - 0.4},${UUSIMAA_BBOX.minLat - 0.2},${UUSIMAA_BBOX.maxLon + 0.4},${UUSIMAA_BBOX.maxLat + 0.2},EPSG:4326`,
-    },
-  );
-  // Tyhjä vastaus on aina virhe (esim. väärä bbox) – heitetään, jottei sitä välimuistiteta viikoiksi.
-  if (js.features.length < 100) throw new Error(`Oppilaitosrekisteri palautti vain ${js.features.length} koulua`);
-  return js.features.map((f) => ({ nimi: f.properties.onimi, tyyppi: f.properties.oltyp_nimi, lon: f.geometry.coordinates[0], lat: f.geometry.coordinates[1] }));
-}
+// Rekisterin sijainnit ovat osin pielessä (Espoo, Vantaa); ETL korjaa ne kaupunkien palvelukartasta.
+const oppilaitokset = (raakaKoulut as unknown as { koulut: [number, number, string, string][] }).koulut.map(([lat, lon, nimi, tyyppi]) => ({
+  nimi,
+  tyyppi,
+  lat,
+  lon,
+}));
 
 export function etaisyysKm(a: Piste, b: Piste) {
   const rad = (d: number) => (d * Math.PI) / 180;
@@ -134,11 +131,11 @@ export function etaisyysKm(a: Piste, b: Piste) {
   return 2 * 6371 * Math.asin(Math.sqrt(h));
 }
 
-export async function lahimmatKoulut(p: Piste, n = 6) {
-  return (await oppilaitokset())
-    .map((o) => ({ ...o, km: etaisyysKm(p, o) }))
-    .sort((a, b) => a.km - b.km)
-    .slice(0, n);
+/** Lähimmät koulut: 4 peruskoulua ja 2 lukiota etäisyysjärjestyksessä (lukiot eivät vie peruskoulujen paikkoja). */
+export async function lahimmatKoulut(p: Piste) {
+  const kaikki = oppilaitokset.map((o) => ({ ...o, km: etaisyysKm(p, o) })).sort((a, b) => a.km - b.km);
+  const lukio = (o: { tyyppi: string }) => o.tyyppi === "Lukiot";
+  return [...kaikki.filter((o) => !lukio(o)).slice(0, 4), ...kaikki.filter(lukio).slice(0, 2)].sort((a, b) => a.km - b.km);
 }
 
 // --- Matka-ajat (Digitransit) ----------------------------------------------------
@@ -197,5 +194,162 @@ export async function matka(from: Piste, to: Piste): Promise<Matka> {
     reitti: kulkuneuvot.map((l) => `${KULKUNEUVO[l.mode] ?? l.mode.toLowerCase()} ${l.route?.shortName ?? ""}`.trim()).join(" → ") || null,
     pyora: min(pyora[0]?.duration),
     kavely: min(kavely[0]?.duration),
+  };
+}
+
+// --- Lähiympäristö: kaupat, päiväkodit (OSM, ETL) ja pysäkit (Digitransit) ---------------
+
+type PalveluPiste = { nimi: string; lat: number; lon: number; km: number };
+
+const lahimmat = <T extends Piste>(p: Piste, pisteet: T[], n: number) =>
+  pisteet
+    .map((x) => ({ ...x, km: etaisyysKm(p, x) }))
+    .sort((a, b) => a.km - b.km)
+    .slice(0, n);
+
+/** Lähimmät ruokakaupat ja päiväkodit esiladatusta OSM-otteesta (scripts/etl/palvelupisteet.mjs). */
+export function lahimmatPalvelut(p: Piste): { kaupat: (PalveluPiste & { tyyppi: string })[]; paivakodit: PalveluPiste[] } {
+  return {
+    kaupat: lahimmat(
+      p,
+      palvelupisteet.kaupat.map(([lat, lon, nimi, t]) => ({ lat, lon, nimi, tyyppi: t === "s" ? "supermarket" : "lähikauppa" })),
+      3,
+    ),
+    paivakodit: lahimmat(p, palvelupisteet.paivakodit.map(([lat, lon, nimi]) => ({ lat, lon, nimi })), 4),
+  };
+}
+
+export type Pysakki = { nimi: string; lat: number; lon: number; metrit: number; kulkuneuvo: string; linjat: string[] };
+
+/** Lähimmät pysäkit 800 m säteellä. Saman nimiset laiturit (kadun eri puolilla) yhdistetään. */
+export async function lahimmatPysakit(p: Piste, n = 6): Promise<Pysakki[]> {
+  "use cache";
+  cacheLife("days");
+  const query = `query ($lat: Float!, $lon: Float!) {
+    stopsByRadius(lat: $lat, lon: $lon, radius: 800, first: 60) {
+      edges { node { distance stop { name lat lon vehicleMode routes { shortName } } } }
+    }
+  }`;
+  const res = await fetch(`${DIGITRANSIT}/routing/v2/finland/gtfs/v1`, {
+    method: "POST",
+    headers: { ...digitransitHeaders(), "Content-Type": "application/json" },
+    body: JSON.stringify({ query, variables: { lat: p.lat, lon: p.lon } }),
+    signal: AbortSignal.timeout(20_000),
+  });
+  const js = await res.json();
+  if (!res.ok || js.errors) throw new Error(`Digitransit ${res.status}`);
+  type Solmu = { distance: number; stop: { name: string; lat: number; lon: number; vehicleMode: string | null; routes: { shortName: string | null }[] } };
+  const ryhmat = new Map<string, Pysakki>();
+  for (const { node } of js.data.stopsByRadius.edges as { node: Solmu }[]) {
+    const s = node.stop;
+    if (s.vehicleMode === "RAIL") continue; // juna-asemat omana listanaan (lahimmatJunaAsemat)
+    const kulkuneuvo = KULKUNEUVO[s.vehicleMode ?? ""] ?? "bussi";
+    const avain = `${s.name}|${kulkuneuvo}`;
+    const linjat = s.routes.map((r) => r.shortName).filter((x): x is string => !!x);
+    const vanha = ryhmat.get(avain);
+    if (!vanha) ryhmat.set(avain, { nimi: s.name, lat: s.lat, lon: s.lon, metrit: Math.round(node.distance), kulkuneuvo, linjat });
+    else vanha.linjat.push(...linjat);
+  }
+  // Yölinjat (N-pääte) ja pysäkit ilman linjoja jätetään pois; linjat numerojärjestykseen.
+  return [...ryhmat.values()]
+    .map((r) => ({
+      ...r,
+      linjat: [...new Set(r.linjat.filter((l) => !/N$/.test(l)))].sort((a, b) => a.localeCompare(b, "fi", { numeric: true })),
+    }))
+    .filter((r) => r.linjat.length > 0)
+    .sort((a, b) => a.metrit - b.metrit)
+    .slice(0, n);
+}
+
+export type JunaAsema = { nimi: string; lat: number; lon: number; metrit: number; lahijunat: string[]; kaukojunat: boolean };
+
+/**
+ * Juna-asemat 3 km säteellä (enintään 3). Laiturit yhdistetään asemaksi; lähijunat näytetään
+ * kirjaintunnuksina (A, I, K …), kauko- ja yöjunista (IC, S, PYO …) vain tieto, että niitä pysähtyy.
+ */
+export async function lahimmatJunaAsemat(p: Piste, n = 3): Promise<JunaAsema[]> {
+  "use cache";
+  cacheLife("days");
+  // Haetaan asemia (STATION) eikä laitureita: nearest palauttaa enintään 20 kohdetta, ja suurten asemien
+  // laiturit (Helsingissä ~20) veisivät muuten kaikki paikat ja seuraava asema (Pasila) jäisi pois.
+  const query = `query ($lat: Float!, $lon: Float!) {
+    nearest(lat: $lat, lon: $lon, maxDistance: 3000, filterByModes: [RAIL], filterByPlaceTypes: [STATION], first: 20) {
+      edges { node { distance place { ... on Stop { name lat lon stops { routes { shortName } } } } } }
+    }
+  }`;
+  const res = await fetch(`${DIGITRANSIT}/routing/v2/finland/gtfs/v1`, {
+    method: "POST",
+    headers: { ...digitransitHeaders(), "Content-Type": "application/json" },
+    body: JSON.stringify({ query, variables: { lat: p.lat, lon: p.lon } }),
+    signal: AbortSignal.timeout(20_000),
+  });
+  const js = await res.json();
+  if (!res.ok || js.errors) throw new Error(`Digitransit ${res.status}`);
+  type Solmu = { distance: number; place: { name: string; lat: number; lon: number; stops: { routes: { shortName: string | null }[] }[] | null } };
+  return (js.data.nearest.edges as { node: Solmu }[])
+    .map(({ node }) => {
+      const tunnukset = (node.place.stops ?? []).flatMap((st) => st.routes.map((r) => r.shortName ?? ""));
+      return {
+        nimi: node.place.name,
+        lat: node.place.lat,
+        lon: node.place.lon,
+        metrit: Math.round(node.distance),
+        lahijunat: [...new Set(tunnukset.filter((t) => /^[A-Z]$/.test(t)))].sort(),
+        kaukojunat: tunnukset.some((t) => /^[A-Z]{1,3} ?\d+$/.test(t)),
+      };
+    })
+    .sort((a, b) => a.metrit - b.metrit)
+    .slice(0, n);
+}
+
+// --- Kävelyreitti (Lähiympäristö-kartta) ------------------------------------------------
+
+export type Kavely = { minuutit: number; metrit: number; reitti: [number, number][] };
+
+/** Googlen koodattu polyline (tarkkuus 5) → [[lon, lat], …] */
+function puraPolyline(s: string): [number, number][] {
+  const out: [number, number][] = [];
+  let i = 0, lat = 0, lon = 0;
+  const luku = () => {
+    let tulos = 0, siirto = 0, b: number;
+    do {
+      b = s.charCodeAt(i++) - 63;
+      tulos |= (b & 0x1f) << siirto;
+      siirto += 5;
+    } while (b >= 0x20);
+    return tulos & 1 ? ~(tulos >> 1) : tulos >> 1;
+  };
+  while (i < s.length) {
+    lat += luku();
+    lon += luku();
+    out.push([lon / 1e5, lat / 1e5]);
+  }
+  return out;
+}
+
+/** Kävelyreitti, -aika ja -matka Digitransitista. null, jos reittiä ei löydy. */
+export async function kavelyreitti(from: Piste, to: Piste): Promise<Kavely | null> {
+  "use cache";
+  cacheLife("days");
+  const query = `query ($from: PlanLabeledLocationInput!, $to: PlanLabeledLocationInput!) {
+    planConnection(origin: $from, destination: $to, modes: { directOnly: true, direct: [WALK] }, first: 1) {
+      edges { node { duration legs { distance legGeometry { points } } } }
+    }
+  }`;
+  const loc = (p: Piste) => ({ location: { coordinate: { latitude: p.lat, longitude: p.lon } } });
+  const res = await fetch(`${DIGITRANSIT}/routing/v2/finland/gtfs/v1`, {
+    method: "POST",
+    headers: { ...digitransitHeaders(), "Content-Type": "application/json" },
+    body: JSON.stringify({ query, variables: { from: loc(from), to: loc(to) } }),
+    signal: AbortSignal.timeout(20_000),
+  });
+  const js = await res.json();
+  if (!res.ok || js.errors) throw new Error(`Digitransit ${res.status}`);
+  const node = js.data.planConnection.edges[0]?.node as { duration: number; legs: { distance: number; legGeometry: { points: string } }[] } | undefined;
+  if (!node) return null;
+  return {
+    minuutit: Math.max(1, Math.round(node.duration / 60)),
+    metrit: Math.round(node.legs.reduce((s, l) => s + l.distance, 0)),
+    reitti: node.legs.flatMap((l) => puraPolyline(l.legGeometry.points)),
   };
 }

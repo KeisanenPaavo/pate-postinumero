@@ -12,8 +12,10 @@ Skriptit: `scripts/check/` — aja projektin juuresta.
 | Melu (katuverkko) | Helsinki WFS `kartta.hel.fi/ws/geoserver/avoindata`, `Meluselvitys_2022_Helsinki_yhteismelu_LAeg_7-22_NPM` (`db_lo`, `db_hi`) | ✅ Helsinki | pistekysely toimii |
 | Melu (Espoo) | Espoo WMS `kartat.espoo.fi/teklaogcweb/wms.ashx`, `Espoo_tieliikenne Lden_EU (kadut ja maantiet)` ym. | ⚠️ | vain karttakuva – tasot eivät tue GetFeatureInfoa → ei pistearvoa |
 | Melu (Vantaa) | – | ⛔ | ei löytynyt avointa rajapintaa; selvitys 2022 vain PDF:nä |
-| Koulut | Tilastokeskus WFS `oppilaitokset:oppilaitokset` (2025) | ✅ | 2501 koulua: peruskoulut, lukiot, erityiskoulut — **ei päiväkoteja** |
-| Päiväkodit | OSM Overpass `amenity=kindergarten` | ⚠️ | toimii, mutta Overpass rajoittaa/kaatuu → esilataa ETL:ssä Geofabrik-otteesta |
+| Koulut | Tilastokeskus WFS `oppilaitokset:oppilaitokset` (2025) + pääkaupunkiseudun palvelukartta `api.hel.fi/servicemap/v2`, ETL (`npm run data:koulut`) | ⚠️→✅ | 2501 koulua koko maassa — **ei päiväkoteja**. **Rekisterin koordinaatit osin pielessä** (14.10.2026): Uudellamaalla 51 koulua yli 1 km väärässä paikassa verrattuna OSM:ään, pahimmat Espoon koulut Turun seudulla (~135 km) ja Vantaan koulut 40–60 km. Korjaus: Helsingin, Espoon, Vantaan ja Kauniaisen kouluille sijainti palvelukartasta yksiselitteisellä nimiosumalla (64 korjattu, 34 puuttuvaa lisätty). Muualla Uudellamaalla rekisterin sijainti sellaisenaan. |
+| Päiväkodit | OSM Overpass `amenity=kindergarten`, esiladattu ETL:ssä (`npm run data:palvelut`) | ✅ | 913 nimettyä päiväkotia (14.10.2026); Overpass kaatuilee → haetaan kerran, peilipalvelimet varalla |
+| Ruokakaupat | OSM Overpass `shop=supermarket\|convenience`, sama ETL | ✅ | 762 kauppaa; huoltoasemamyymälät ja kioskit pois (brändi/nimi) |
+| Pysäkit | Digitransit GraphQL `stopsByRadius` (800 m) | ✅ | koko Suomi; laiturit yhdistetään nimen ja kulkuneuvon mukaan, yölinjat pois |
 | Geokoodaus | Digitransit `geocoding/v1/search` | ✅ | palauttaa myös postinumeron (täsmäsi polygonihakuun) |
 | Matka-ajat | Digitransit GraphQL `routing/v2/finland/gtfs/v1`, `planConnection` | ✅ | koko Suomi: julkinen, pyörä, kävely |
 

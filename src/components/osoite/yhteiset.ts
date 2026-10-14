@@ -11,7 +11,16 @@ export type Melu = {
   rautatiet: { paiva: string | null; yo: string | null };
   helsinkiYhteismelu?: string | null;
 };
-export type Koulu = { nimi: string; tyyppi: string; km: number };
+export type Koulu = { nimi: string; tyyppi: string; km: number; lat: number; lon: number };
+export type PalveluPiste = { nimi: string; lat: number; lon: number; km: number };
+export type Pysakki = { nimi: string; lat: number; lon: number; metrit: number; kulkuneuvo: string; linjat: string[] };
+export type JunaAsema = { nimi: string; lat: number; lon: number; metrit: number; lahijunat: string[]; kaukojunat: boolean };
+export type Lahella = {
+  kaupat: (PalveluPiste & { tyyppi: string })[];
+  paivakodit: PalveluPiste[];
+  pysakit: Pysakki[] | null;
+  junaAsemat: JunaAsema[] | null;
+};
 export type PisteTiedot = { melu: Melu | null; koulut: Koulu[] | null };
 
 export const pisteParam = (p: Piste) => `${p.lat.toFixed(5)},${p.lon.toFixed(5)}`;
@@ -53,6 +62,10 @@ export function useJson<T>(url: string | null) {
   return tila.url === url ? tila : { url, data: undefined, virhe: false };
 }
 
+export const useLahella = (lahto: Piste) => useJson<Lahella>(`/api/lahella?p=${pisteParam(lahto)}`);
+export type Kavely = { minuutit: number; metrit: number; reitti: [number, number][] };
+export const useKavely = (lahto: Piste, kohde: Piste | null) =>
+  useJson<Kavely>(kohde ? `/api/kavely?mista=${pisteParam(lahto)}&minne=${pisteParam(kohde)}` : null);
 export const usePisteTiedot = (lahto: Piste) => useJson<PisteTiedot>(`/api/piste?p=${pisteParam(lahto)}`);
 export const useMatka = (lahto: Piste, kohde: Piste) =>
   useJson<Matka>(`/api/matka?mista=${pisteParam(lahto)}&minne=${pisteParam(kohde)}`);
@@ -91,3 +104,6 @@ export const meluVyohyke = (db: number | null) => (db == null ? "alle 45 dB" : d
 
 export const minuuttia = (n: number | null | undefined) => (n == null ? "–" : `${n} min`);
 export const km = (n: number) => `${n.toFixed(1).replace(".", ",")} km`;
+
+/** Kävelyetäisyyden tarkkuus riittää: alle kilometri 10 metrin tarkkuudella, muuten 0,1 km. */
+export const etaisyys = (km: number) => (km < 1 ? `${Math.max(10, Math.round(km * 100) * 10)} m` : `${km.toFixed(1).replace(".", ",")} km`);

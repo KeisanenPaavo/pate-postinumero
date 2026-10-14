@@ -162,3 +162,84 @@ a {
     scroll-behavior: smooth;
   }
 }
+
+/*
+ * Lähiympäristön kartan kuvasymbolit (sama merkki kartalla, selitteessä ja listoissa).
+ * Palvelut valkoisella pohjalla, joukkoliikenne mustalla, asunto korostusvärillä – ryhmä erottuu
+ * jo kaukaa, kuvake kertoo lajin.
+ */
+.symboli {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  box-sizing: border-box;
+}
+.symboli svg {
+  width: 62%;
+  height: 62%;
+}
+.symboli-pieni {
+  width: 20px;
+  height: 20px;
+}
+.symboli-pieni svg {
+  width: 68%;
+  height: 68%;
+}
+.symboli-palvelu {
+  background: var(--page);
+  color: var(--ink);
+  border: 1.5px solid var(--ink);
+}
+.symboli-liikenne {
+  background: var(--ink);
+  color: var(--page);
+}
+.symboli-asunto {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+.symboli-kartalla {
+  width: 30px;
+  height: 30px;
+  cursor: pointer;
+  box-shadow: 0 0 0 2px var(--page), 0 1px 4px rgba(20, 20, 20, 0.35);
+}
+.symboli-kartalla.symboli-asunto {
+  width: 38px;
+  height: 38px;
+  box-shadow: 0 0 0 3px var(--page), 0 2px 6px rgba(20, 20, 20, 0.4);
+}
+
+.maplibregl-popup-content {
+  border-radius: 0;
+  border: 1px solid #141414;
+  padding: 6px 10px;
+  font: 500 13px/1.4 var(--font-public-sans), system-ui, sans-serif;
+  color: #141414;
+}
+
+/* Valittu lähikohde (kävelyreitti näkyvissä): korostusvärinen rengas. */
+.symboli-kartalla.symboli-valittu {
+  box-shadow: 0 0 0 2px var(--page), 0 0 0 5px var(--accent), 0 1px 4px rgba(20, 20, 20, 0.35);
+  z-index: 2;
+}
+button.symboli-kartalla {
+  padding: 0;
+}
+.maplibregl-popup-content strong {
+  display: block;
+  font-weight: 700;
+}
+.maplibregl-popup-close-button {
+  width: 28px;
+  height: 28px;
+  font-size: 18px;
+}
+.maplibregl-popup-content:has(.maplibregl-popup-close-button) {
+  padding-right: 32px;
+}
