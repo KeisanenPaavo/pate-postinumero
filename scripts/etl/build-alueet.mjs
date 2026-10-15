@@ -102,7 +102,7 @@ const PAAVO_VARS = [
   "he_vakiy", "he_kika", ...IKARYHMAT.map((g) => `he_${g}`),
   "ko_ika18y", "ko_perus", "ko_yliop", "ko_ammat", "ko_al_kork", "ko_yl_kork",
   "hr_tuy", "hr_mtu", "hr_ktu", "hr_pi_tul", "hr_ke_tul", "hr_hy_tul",
-  "te_taly", "te_takk", "te_as_valj", "te_yks", "te_laps", "te_plap", "te_elak", "te_omis_as", "te_vuok_as",
+  "te_taly", "te_takk", "te_as_valj", "te_yks", "te_nuor", "te_eil_np", "te_laps", "te_plap", "te_aklap", "te_klap", "te_teini", "te_yhlap", "te_aik", "te_elak", "te_omis_as", "te_vuok_as",
   "tr_mtu", "ra_asunn", "ra_as_kpa", "ra_pt_as", "ra_kt_as",
   "pt_vakiy", "pt_tyoll", "pt_tyott", "pt_opisk", "pt_elakel",
 ];

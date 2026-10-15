@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import { HintaKaavio } from "@/components/HintaKaavio";
@@ -6,7 +7,8 @@ import { IkaKaavio, type IkaRyhma } from "@/components/IkaKaavio";
 import { Piilotettava } from "@/components/osoite/Asetukset";
 import { KaavoitusOsio } from "@/components/osoite/Kaavoitus";
 import { Lahiymparisto } from "@/components/osoite/Lahiymparisto";
-import { Koulut, Liikenne, MeluOsio, Osoitepalkki, Yhteenveto } from "@/components/osoite/Osiot";
+import { Koulut, Liikenne, MeluOsio, Osoitepalkki, Yhteenveto, type TiivistelmaRivi } from "@/components/osoite/Osiot";
+import { Valilehdet } from "@/components/Valilehdet";
 import {
   HELSINGIN_KESKUSTA,
   alueSlugilla,
@@ -24,7 +26,8 @@ import {
   type VuokraTyyppi,
 } from "@/lib/data";
 import { Ylapalkki } from "@/components/Ylapalkki";
-import { alueenHinta, suhdeKuntaan } from "@/lib/raportti";
+import { alueenHinta, muutos, suhdeKuntaan } from "@/lib/raportti";
+import { samankaltaisetAlueet } from "@/lib/samankaltaiset";
 import { desimaalina, euroa, euroaDesimaalilla, lukuna, osuus, prosentti } from "@/lib/muotoilu";
 
 export function generateStaticParams() {
@@ -53,6 +56,33 @@ const IKARYHMAT: [string, string[]][] = [
   ["75+", ["75_79", "80_84", "85_"]],
 ];
 
+// Kotitaloudet elämänvaiheittain, osuus kaikista talouksista. Paavon luokat ovat osin päällekkäisiä:
+// aikuisten talouksiin (kaikki 18–64 v) kuuluvat myös nuoret yksinasuvat ja parit, ja eläkeikäisten talous
+// (vähintään yksi 65+) voi olla myös lapsitalous. Siksi "muut työikäiset" lasketaan erotuksena.
+const ELAMANVAIHEET: [string, (p: Paavo) => number | null][] = [
+  ["Nuoret yksinasuvat (alle 35 v)", (p) => p.te_nuor],
+  ["Nuoret parit ilman lapsia", (p) => p.te_eil_np],
+  ["Muut työikäisten taloudet", (p) => (p.te_aik == null || p.te_nuor == null || p.te_eil_np == null ? null : p.te_aik - p.te_nuor - p.te_eil_np)],
+  ["Lapsiperheet", (p) => p.te_laps],
+  ["Eläkeikäisten taloudet (65+)", (p) => p.te_elak],
+];
+
+// Lapsiperheet lasten iän mukaan, osuus lapsiperheistä. Perhe kuuluu jokaiseen ryhmään, jonka ikäinen lapsi siinä on.
+const LAPSIPERHEET: [string, (p: Paavo) => number | null][] = [
+  ["Alle 3-vuotias lapsi", (p) => p.te_plap],
+  ["Alle kouluikäinen (alle 7 v)", (p) => p.te_aklap],
+  ["Kouluikäinen (7–12 v)", (p) => p.te_klap],
+  ["Teini-ikäinen (13–17 v)", (p) => p.te_teini],
+  ["Yksi vanhempi", (p) => p.te_yhlap],
+];
+
+function ryhmaOsuudet(alue: Paavo, kunta: Paavo, ryhmat: [string, (p: Paavo) => number | null][], kanta: (p: Paavo) => number | null): IkaRyhma[] {
+  return ryhmat.map(([nimi, f]) => ({ nimi, alue: osuus(f(alue), kanta(alue)), vertailu: osuus(f(kunta), kanta(kunta)) }));
+}
+
+/** Salattuja tai epäjohdonmukaisia lukuja (pieni alue) ei piirretä. */
+const kayttokelpoinen = (r: IkaRyhma[]) => r.every((x) => x.alue != null && x.alue >= 0);
+
 function ikaOsuudet(p: Paavo) {
   return IKARYHMAT.map(([nimi, ryhmat]) => {
     const arvot = ryhmat.map((g) => p[`he_${g}`]);
@@ -68,6 +98,7 @@ const OSIOT = [
   ["kaavoitus", "Kaavoitus"],
   ["koulut", "Koulut", "koulut"],
   ["asukkaat", "Asukkaat"],
+  ["samankaltaiset", "Samankaltaiset"],
 ] as const;
 
 // params luetaan <Suspense>-rajan sisällä: listatut 389 aluetta prerenderöidään kokonaan, ja
@@ -97,6 +128,9 @@ async function AlueSisalto({ params }: Pick<PageProps<"/[slug]">, "params">) {
   const sarjat = hintaSarjat(alue);
   const suhde = suhdeKuntaan(hinta?.hinta, kuntaHinta?.kerrostalot, k.nimi);
 
+  const elamanvaiheet = ryhmaOsuudet(p, k.paavo, ELAMANVAIHEET, (x) => x.te_taly);
+  const lapsiperheet = ryhmaOsuudet(p, k.paavo, LAPSIPERHEET, (x) => x.te_laps);
+  const asukasRivi = tiivistelmanAsukkaat(p, elamanvaiheet, k.nimi);
   const ikaAlue = ikaOsuudet(p);
   const ikaKunta = ikaOsuudet(k.paavo);
   const ryhmat: IkaRyhma[] = ikaAlue.map((r, i) => ({ nimi: r.nimi, alue: r.osuus, vertailu: ikaKunta[i].osuus }));
@@ -111,6 +145,7 @@ async function AlueSisalto({ params }: Pick<PageProps<"/[slug]">, "params">) {
 
   const { arvo: hArvo, alateksti: hAlateksti } = alueenHinta(alue);
   const yhteenvetoHinta = { arvo: hArvo, alateksti: hAlateksti };
+  const vuokraRivi = tiivistelmanVuokra(alue);
   const hintaLause = hinta && suhde ? `neliöhinta ${suhde}` : null;
 
   // Hintahistorian huippu (vain alueen oma sarja).
@@ -158,7 +193,14 @@ async function AlueSisalto({ params }: Pick<PageProps<"/[slug]">, "params">) {
           <Osoitepalkki keskipiste={alue.keskipiste} alueNimi={alue.nimi} hintaLause={hintaLause} keskusta={helsinki} />
         </Suspense>
         <Suspense fallback={<div className="mt-10 h-96 border-t-[3px] border-ink" />}>
-          <Yhteenveto keskipiste={alue.keskipiste} hinta={yhteenvetoHinta} keskusta={helsinki} kunta={alue.kunta} />
+          <Yhteenveto
+            keskipiste={alue.keskipiste}
+            hinta={yhteenvetoHinta}
+            vuokra={vuokraRivi}
+            asukkaat={asukasRivi}
+            keskusta={helsinki}
+            kunta={alue.kunta}
+          />
         </Suspense>
       </header>
 
@@ -168,14 +210,28 @@ async function AlueSisalto({ params }: Pick<PageProps<"/[slug]">, "params">) {
         </Suspense>
       </Osio>
 
-      <Osio id="hinnat" otsikko="Hinnat" johdanto={hintaJohdanto}>
-        {sarjat.some((s) => s.alue != null) && <HintaKaavio data={sarjat} alueNimi={alue.nimi} kuntaNimi={k.nimi} />}
-        <HuoneHinnat alue={alue} />
-        <p className="mt-3 text-[13px] text-muted">
-          Vanhojen osakeasuntojen neliöhinnat. Kerrostalohinta on yksiöiden, kaksioiden ja kolmioiden keskiarvo
-          kauppamäärillä painotettuna. Omakotitaloja ei tilastoida postinumeroittain. Lähde: Tilastokeskus.
-        </p>
-        <Vuokrat alue={alue} />
+      <Osio id="hinnat" otsikko="Hinnat">
+        <Valilehdet
+          ryhma="hinnat"
+          valilehdet={[
+            {
+              avain: "omistus",
+              nimi: "Omistusasunnot",
+              sisalto: (
+                <>
+                  <p className="mb-5 max-w-[640px]">{hintaJohdanto}</p>
+                  {sarjat.some((s) => s.alue != null) && <HintaKaavio data={sarjat} alueNimi={alue.nimi} kuntaNimi={k.nimi} />}
+                  <HuoneHinnat alue={alue} />
+                  <p className="mt-3 text-[13px] text-muted">
+                    Vanhojen osakeasuntojen neliöhinnat. Kerrostalohinta on yksiöiden, kaksioiden ja kolmioiden keskiarvo
+                    kauppamäärillä painotettuna. Omakotitaloja ei tilastoida postinumeroittain. Lähde: Tilastokeskus.
+                  </p>
+                </>
+              ),
+            },
+            ...(alueenVuokrat(alue) ? [{ avain: "vuokrat", nimi: "Vuokra-asunnot", sisalto: <Vuokrat alue={alue} /> }] : []),
+          ]}
+        />
       </Osio>
 
       <Osio id="liikenne" otsikko="Liikenne">
@@ -206,12 +262,71 @@ async function AlueSisalto({ params }: Pick<PageProps<"/[slug]">, "params">) {
 
       <Osio id="asukkaat" otsikko="Asukkaat" johdanto={asukasJohdanto}>
         <VertailuTaulukko alue={p} kunta={k.paavo} alueNimi={alue.nimi} kuntaNimi={k.nimi} />
-        <h3 className="mt-10 mb-3 font-semibold">Ikärakenne</h3>
-        <IkaKaavio ryhmat={ryhmat} alueNimi={alue.nimi} vertailuNimi={k.nimi} />
+        <div className="mt-10">
+          <Valilehdet
+            ryhma="asukkaat"
+            valilehdet={[
+              { avain: "ika", nimi: "Ikärakenne", sisalto: <IkaKaavio ryhmat={ryhmat} alueNimi={alue.nimi} vertailuNimi={k.nimi} /> },
+              ...(kayttokelpoinen(elamanvaiheet)
+                ? [
+                    {
+                      avain: "elamanvaihe",
+                      nimi: "Elämänvaihe",
+                      sisalto: (
+                        <IkaKaavio
+                          ryhmat={elamanvaiheet}
+                          alueNimi={alue.nimi}
+                          vertailuNimi={k.nimi}
+                          kuvaus="Kotitaloudet elämänvaiheittain, osuus kaikista talouksista"
+                          yksikko="Osuus talouksista"
+                          ryhmanNimi="Elämänvaihe"
+                          leveaNimi
+                        />
+                      ),
+                    },
+                  ]
+                : []),
+              ...(kayttokelpoinen(lapsiperheet)
+                ? [
+                    {
+                      avain: "lapsiperheet",
+                      nimi: "Lapsiperheet",
+                      sisalto: (
+                        <>
+                          <p className="mb-3 text-[15px] text-muted">
+                            Osuus alueen {lukuna(p.te_laps)} lapsiperheestä lasten iän mukaan. Perhe, jossa on eri-ikäisiä
+                            lapsia, kuuluu useaan ryhmään.
+                          </p>
+                          <IkaKaavio
+                            ryhmat={lapsiperheet}
+                            alueNimi={alue.nimi}
+                            vertailuNimi={k.nimi}
+                            kuvaus="Lapsiperheet lasten iän mukaan, osuus lapsiperheistä"
+                            yksikko="Osuus lapsiperheistä"
+                            ryhmanNimi="Perheessä on"
+                            leveaNimi
+                          />
+                        </>
+                      ),
+                    },
+                  ]
+                : []),
+            ]}
+          />
+        </div>
         <p className="mt-3 text-[13px] text-muted">
           Lähde: Tilastokeskus, Paavo – postinumeroalueittainen avoin tieto {meta.paavo_vuosi}. Pienten alueiden
-          tietoja on salattu tietosuojasyistä.
+          tietoja on salattu tietosuojasyistä. Elämänvaiheen luokat ovat osin päällekkäisiä (esim. eläkeikäisen
+          talous, jossa on lapsia), joten osuuksien summa voi ylittää hieman 100 %.
         </p>
+      </Osio>
+
+      <Osio
+        id="samankaltaiset"
+        otsikko="Samankaltaiset alueet"
+        johdanto="Uudenmaan alueet, joiden asukkaat ja asuntokanta muistuttavat eniten tätä aluetta: tulotaso, ikä, koulutus, kotitaloudet, omistusasuminen, kerrostalojen osuus ja asukastiheys. Hinta ei vaikuta valintaan, joten listasta löytyy samanlaisia alueita eri hintatasoilla."
+      >
+        <Samankaltaiset alue={alue} />
       </Osio>
     </article>
   );
@@ -267,6 +382,36 @@ function HuoneHinnat({ alue }: { alue: Alue }) {
   );
 }
 
+/** Tiivistelmän vuokrarivi: kaksion kuukausivuokra (suurimmat kaupungit) tai neliövuokra. */
+function tiivistelmanVuokra(alue: Alue): TiivistelmaRivi | null {
+  const v = alueenVuokrat(alue);
+  if (!v) return null;
+  const kaksio = v.alue.tyypit.kaksiot;
+  const missa = v.alue.koodi === "MK01" ? "Uusimaa keskimäärin" : v.alue.koodi === "keh" ? "kehyskunnat keskimäärin" : v.alue.nimi;
+  if (kaksio.kk_mediaani != null) return { arvo: `${euroa(kaksio.kk_mediaani)}/kk`, selite: `kaksion mediaanivuokra · ${missa}` };
+  if (kaksio.vapaa != null) return { arvo: `${euroaDesimaalilla(kaksio.vapaa)}/m²`, selite: `kaksiot, vapaarahoitteiset · ${missa}` };
+  return null;
+}
+
+// Tiivistelmän lyhyet nimet elämänvaiheille (samassa järjestyksessä kuin ELAMANVAIHEET).
+const ELAMANVAIHE_LYHYT = ["Nuoria yksinasuvia", "Nuoria pareja", "Työikäisiä", "Lapsiperheitä", "Eläkeikäisiä"];
+
+/** Tiivistelmän asukasrivi: elämänvaihe, jota alueella on eniten enemmän kuin kunnassa. */
+function tiivistelmanAsukkaat(p: Paavo, vaiheet: IkaRyhma[], kuntaNimi: string): TiivistelmaRivi | null {
+  if (p.he_vakiy == null) return null;
+  const pct = (v: number) => `${Math.round(v * 100)} %`;
+  const asukasta = `${lukuna(p.he_vakiy)} asukasta`;
+  const erottuva = vaiheet
+    .map((r, i) => ({ ...r, i, ero: r.alue != null && r.vertailu != null ? r.alue - r.vertailu : -1 }))
+    .sort((a, b) => b.ero - a.ero)[0];
+  if (!erottuva || erottuva.ero < 0.02) return { arvo: lukuna(p.he_vakiy), selite: "asukasta" };
+  return {
+    arvo: ELAMANVAIHE_LYHYT[erottuva.i],
+    selite: `${pct(erottuva.alue!)} talouksista (${kuntaNimi} ${pct(erottuva.vertailu!)}) · ${asukasta}`,
+    href: "#elamanvaihe",
+  };
+}
+
 const neljannesTekstina = (q: string) => `${q.slice(5)}. neljännes ${q.slice(0, 4)}`;
 
 /** Vuokrat huoneluvuittain vuokratilaston tarkimmalta alueelta, johon postinumero kuuluu. */
@@ -284,9 +429,8 @@ function Vuokrat({ alue }: { alue: Alue }) {
   const neliovuokra = (t: VuokraTyyppi | undefined) => (t?.vapaa != null ? `${euroaDesimaalilla(t.vapaa)}/m²` : "–");
 
   return (
-    <div className="mt-12">
-      <h3 className="mb-2 font-semibold">Vuokrat huoneluvuittain</h3>
-      <p className="mb-4 max-w-[640px] text-[15px]">
+    <div>
+      <p className="mb-4 max-w-[640px]">
         {va.postinumerot
           ? `Vuokria ei tilastoida postinumeroittain. ${alue.nimi} kuuluu vuokratilaston osa-alueeseen ${va.nimi} (${va.postinumerot} postinumeroaluetta).`
           : va.koodi === "keh"
@@ -363,6 +507,98 @@ function Vuokrat({ alue }: { alue: Alue }) {
         Tilastokeskus, asuntojen vuokrat.
       </p>
     </div>
+  );
+}
+
+/** Vertailulinkin parametri (sama muoto kuin useVertailu.ts: lat,lon,nimi). */
+const vertailuKohde = (a: Alue) => `${a.keskipiste.lat.toFixed(5)},${a.keskipiste.lon.toFixed(5)},${a.pno} ${a.nimi}`;
+
+function Samankaltaiset({ alue }: { alue: Alue }) {
+  const alueet = samankaltaisetAlueet(alue);
+  if (!alueet.length) return <p className="text-muted">Alueella on liian vähän asukkaita vertailuun.</p>;
+  const oma = alueenHinta(alue);
+  const rivit = [alue, ...alueet];
+  return (
+    <>
+      <table className="w-full text-left text-[15px] tabular">
+        <caption className="sr-only">Samankaltaiset alueet: neliöhinta, mediaanitulot, keski-ikä ja lapsitaloudet</caption>
+        <thead className="text-[13px] text-muted">
+          <tr className="border-b border-ink">
+            <th scope="col" className="py-2 font-medium">
+              Alue
+            </th>
+            <th scope="col" className="py-2 pl-3 text-right font-medium">
+              Neliöhinta
+            </th>
+            <th scope="col" className="hidden py-2 pl-3 text-right font-medium sm:table-cell">
+              Mediaanitulot
+            </th>
+            <th scope="col" className="hidden py-2 pl-3 text-right font-medium md:table-cell">
+              Keski-ikä
+            </th>
+            <th scope="col" className="hidden py-2 pl-3 text-right font-medium md:table-cell">
+              Lapsitaloudet
+            </th>
+            <th scope="col" className="py-2 pl-3">
+              <span className="sr-only">Vertailu</span>
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {rivit.map((a) => {
+            const tama = a.pno === alue.pno;
+            const k = haeKunta(a.kunta);
+            const h = alueenHinta(a);
+            const ero = !tama && !h.kunnanKeskiarvo && !oma.kunnanKeskiarvo && h.euroa && oma.euroa ? muutos(h.euroa, oma.euroa) : null;
+            return (
+              <tr key={a.pno} className={`border-b border-grid ${tama ? "bg-grid" : ""}`}>
+                <th scope="row" className="py-2.5 pr-2 pl-0 text-left font-normal">
+                  {tama ? (
+                    <span className="font-semibold">{a.nimi}</span>
+                  ) : (
+                    <Link href={`/${slugify(a)}`} className="font-semibold text-accent hover:underline">
+                      {a.nimi}
+                    </Link>
+                  )}
+                  <span className="block text-[13px] text-muted">
+                    {a.pno} {k.nimi}
+                    {tama && " · tämä alue"}
+                  </span>
+                </th>
+                <td className="py-2.5 pl-3 text-right whitespace-nowrap">
+                  <span className={tama ? "font-semibold" : ""}>{h.euroa != null ? `${euroa(h.euroa)}/m²` : "–"}</span>
+                  {(ero || h.kunnanKeskiarvo) && (
+                    <span className="block text-[13px] text-muted">{h.kunnanKeskiarvo ? "kunnan keskiarvo" : ero}</span>
+                  )}
+                </td>
+                <td className="hidden py-2.5 pl-3 text-right whitespace-nowrap sm:table-cell">{euroa(a.paavo.hr_mtu)}</td>
+                <td className="hidden py-2.5 pl-3 text-right whitespace-nowrap md:table-cell">
+                  {a.paavo.he_kika != null ? `${a.paavo.he_kika} v` : "–"}
+                </td>
+                <td className="hidden py-2.5 pl-3 text-right whitespace-nowrap md:table-cell">{prosentti(a.paavo.te_laps, a.paavo.te_taly)}</td>
+                <td className="py-2.5 pl-3 text-right whitespace-nowrap">
+                  {!tama && (
+                    <Link
+                      href={`/vertailu?${new URLSearchParams([
+                        ["o", vertailuKohde(alue)],
+                        ["o", vertailuKohde(a)],
+                      ])}`}
+                      className="text-[13px] text-accent hover:underline"
+                    >
+                      Vertaa<span className="sr-only">: {alue.nimi} ja {a.nimi}</span>
+                    </Link>
+                  )}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      <p className="mt-3 text-[13px] text-muted">
+        Neliöhinnan muutos on suhteessa tähän alueeseen. Vertailu avaa alueiden keskipisteet rinnakkain. Lähde: Tilastokeskus, Paavo{" "}
+        {meta.paavo_vuosi} ja osakeasuntojen hinnat. Mukana alueet, joilla on vähintään 200 asukasta.
+      </p>
+    </>
   );
 }
 

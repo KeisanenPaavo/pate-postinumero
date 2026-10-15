@@ -129,7 +129,9 @@ export function Osoitepalkki({
               Luvut on laskettu alueen keskeltä. Syötä asunnon osoite, niin melu, matka-ajat ja koulut lasketaan juuri sille kohdalle.
             </p>
           )}
-          <OsoiteHaku onValitse={aseta} label="Asunnon osoite" autoFocus={muokkaa} />
+          <div id="asunnon-osoite">
+            <OsoiteHaku onValitse={aseta} label="Asunnon osoite" autoFocus={muokkaa} />
+          </div>
           {tila && (
             <p role="status" className={`mt-1.5 text-sm ${tila.virhe ? "text-critical" : "text-ink-2"}`}>
               {tila.teksti}
@@ -176,19 +178,47 @@ function VertailuPainike({ osoite }: { osoite: Kohde }) {
 
 // --- Yhteenveto: tiivistelmätaulukko --------------------------------------------------
 
+/** Tiivistelmän rivi: koko rivi on linkki osioon (venytetty linkki), nuoli kertoo sen. */
 function Rivi({ href, otsikko, arvo, selite, korostus }: { href: string; otsikko: string; arvo: string; selite?: React.ReactNode; korostus?: boolean }) {
   return (
-    <tr className="grid grid-cols-[1fr_auto] gap-x-4 border-t border-rule py-3 sm:table-row sm:py-0">
-      <th scope="row" className="text-left font-medium sm:w-[30%] sm:py-4 sm:pr-4">
-        <a href={href} className="-my-[13px] inline-block py-[13px] hover:text-accent hover:underline">
+    <tr className="group relative grid grid-cols-[1fr_auto] gap-x-4 border-t border-rule py-3 hover:bg-grid sm:table-row sm:py-0">
+      <th scope="row" className="text-left font-medium sm:w-[30%] sm:py-4 sm:pr-4 sm:pl-2">
+        <a href={href} className="after:absolute after:inset-0 after:content-[''] group-hover:text-accent group-hover:underline">
           {otsikko}
         </a>
       </th>
       <td className={`luku row-span-2 self-center text-right text-2xl whitespace-nowrap sm:py-4 sm:pr-6 sm:text-left ${korostus ? "text-accent" : ""}`}>
         {arvo}
       </td>
-      <td className="text-[15px] text-muted sm:py-4">{selite}</td>
+      <td className="text-[15px] text-muted sm:py-4 sm:pr-2">
+        <span className="flex items-baseline justify-between gap-3">
+          <span>{selite}</span>
+          <span aria-hidden className="hidden text-muted group-hover:text-accent sm:inline">
+            →
+          </span>
+        </span>
+      </td>
     </tr>
+  );
+}
+
+/** Tiivistelmän valmiiksi lasketut rivit palvelimelta (hinta, vuokra, asukkaat). */
+export type TiivistelmaRivi = { arvo: string; selite: string; href?: string };
+
+/** Vie osoitekenttään (tiivistelmän melurivi ennen kuin osoite on annettu). */
+function OsoitteeseenPainike() {
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        const kentta = document.querySelector<HTMLInputElement>("#asunnon-osoite input");
+        kentta?.scrollIntoView({ block: "center", behavior: "smooth" });
+        kentta?.focus({ preventScroll: true });
+      }}
+      className="relative z-10 font-medium text-accent hover:underline"
+    >
+      Syötä osoite
+    </button>
   );
 }
 
@@ -196,11 +226,15 @@ function Rivi({ href, otsikko, arvo, selite, korostus }: { href: string; otsikko
 export function Yhteenveto({
   keskipiste,
   hinta,
+  vuokra,
+  asukkaat,
   keskusta,
   kunta,
 }: {
   keskipiste: Piste;
   hinta: { arvo: string; alateksti: string };
+  vuokra?: TiivistelmaRivi | null;
+  asukkaat?: TiivistelmaRivi | null;
   keskusta: Kohde;
   kunta: string;
 }) {
@@ -265,7 +299,8 @@ export function Yhteenveto({
       </h2>
       <table className="w-full border-b border-rule">
         <tbody className="block sm:table-row-group">
-          <Rivi href="#hinnat" otsikko="Neliöhinta" arvo={hinta.arvo} selite={hinta.alateksti} />
+          <Rivi href="#omistus" otsikko="Neliöhinta" arvo={hinta.arvo} selite={hinta.alateksti} />
+          {vuokra && <Rivi href={vuokra.href ?? "#vuokrat"} otsikko="Vuokra" arvo={vuokra.arvo} selite={vuokra.selite} />}
           <Rivi
             href="#liikenne"
             otsikko="Keskustaan"
@@ -296,7 +331,9 @@ export function Yhteenveto({
             korostus={yli}
             selite={
               !osoite ? (
-                "Arvioidaan osoitekohtaisesti – syötä osoite."
+                <>
+                  Arvioidaan osoitekohtaisesti. <OsoitteeseenPainike />
+                </>
               ) : melu ? (
                 yli ? (
                   <>
@@ -316,6 +353,7 @@ export function Yhteenveto({
               selite={rKoulu.selite}
             />
           )}
+          {asukkaat && <Rivi href={asukkaat.href ?? "#asukkaat"} otsikko="Asukkaat" arvo={asukkaat.arvo} selite={asukkaat.selite} />}
         </tbody>
       </table>
     </section>
