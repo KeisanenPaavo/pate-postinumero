@@ -1,8 +1,12 @@
 const luku = new Intl.NumberFormat("fi-FI", { maximumFractionDigits: 0 });
+const desimaali = new Intl.NumberFormat("fi-FI", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 const prosenttiF = new Intl.NumberFormat("fi-FI", { maximumFractionDigits: 0, style: "percent" });
 
 export const lukuna = (n: number | null | undefined) => (n == null ? "–" : luku.format(n));
 export const euroa = (n: number | null | undefined) => (n == null ? "–" : `${luku.format(n)} €`);
+export const desimaalina = (n: number | null | undefined) => (n == null ? "–" : desimaali.format(n));
+/** Vuokrille: "24,2 €" */
+export const euroaDesimaalilla = (n: number | null | undefined) => (n == null ? "–" : `${desimaali.format(n)} €`);
 export const prosentti = (osa: number | null | undefined, koko: number | null | undefined) =>
   osa == null || !koko ? "–" : prosenttiF.format(osa / koko);
 export const osuus = (osa: number | null | undefined, koko: number | null | undefined) =>

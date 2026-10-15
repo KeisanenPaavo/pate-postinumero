@@ -10,6 +10,7 @@ import { Koulut, Liikenne, MeluOsio, Osoitepalkki, Yhteenveto } from "@/componen
 import {
   HELSINGIN_KESKUSTA,
   alueSlugilla,
+  alueenVuokrat,
   hintaSarjat,
   kaikkiAlueet,
   kerrostaloHinta,
@@ -17,12 +18,14 @@ import {
   kunta as haeKunta,
   meta,
   slugify,
+  vuokraNeljannes,
   type Alue,
   type Paavo,
+  type VuokraTyyppi,
 } from "@/lib/data";
 import { Ylapalkki } from "@/components/Ylapalkki";
 import { alueenHinta, suhdeKuntaan } from "@/lib/raportti";
-import { euroa, lukuna, osuus, prosentti } from "@/lib/muotoilu";
+import { desimaalina, euroa, euroaDesimaalilla, lukuna, osuus, prosentti } from "@/lib/muotoilu";
 
 export function generateStaticParams() {
   return kaikkiAlueet().map((a) => ({ slug: slugify(a) }));
@@ -172,6 +175,7 @@ async function AlueSisalto({ params }: Pick<PageProps<"/[slug]">, "params">) {
           Vanhojen osakeasuntojen neliöhinnat. Kerrostalohinta on yksiöiden, kaksioiden ja kolmioiden keskiarvo
           kauppamäärillä painotettuna. Omakotitaloja ei tilastoida postinumeroittain. Lähde: Tilastokeskus.
         </p>
+        <Vuokrat alue={alue} />
       </Osio>
 
       <Osio id="liikenne" otsikko="Liikenne">
@@ -260,6 +264,105 @@ function HuoneHinnat({ alue }: { alue: Alue }) {
         ))}
       </tbody>
     </table>
+  );
+}
+
+const neljannesTekstina = (q: string) => `${q.slice(5)}. neljännes ${q.slice(0, 4)}`;
+
+/** Vuokrat huoneluvuittain vuokratilaston tarkimmalta alueelta, johon postinumero kuuluu. */
+function Vuokrat({ alue }: { alue: Alue }) {
+  const v = alueenVuokrat(alue);
+  if (!v) return null;
+  const { alue: va, vertailu } = v;
+  const rivit = [
+    ["Yksiöt", "yksiot"],
+    ["Kaksiot", "kaksiot"],
+    ["Kolmiot+", "kolmiot"],
+  ] as const;
+  const kk = rivit.some(([, t]) => va.tyypit[t].kk_mediaani != null);
+  const muutos = va.tyypit.kaikki.vapaa_vuosimuutos;
+  const neliovuokra = (t: VuokraTyyppi | undefined) => (t?.vapaa != null ? `${euroaDesimaalilla(t.vapaa)}/m²` : "–");
+
+  return (
+    <div className="mt-12">
+      <h3 className="mb-2 font-semibold">Vuokrat huoneluvuittain</h3>
+      <p className="mb-4 max-w-[640px] text-[15px]">
+        {va.postinumerot
+          ? `Vuokria ei tilastoida postinumeroittain. ${alue.nimi} kuuluu vuokratilaston osa-alueeseen ${va.nimi} (${va.postinumerot} postinumeroaluetta).`
+          : va.koodi === "keh"
+            ? `Tilastokeskus julkaisee vuokrat vain suurimmille kaupungeille, joten luvut ovat kehyskuntien keskiarvoja (${va.kunnat?.join(", ")}).`
+            : va.koodi === "MK01"
+              ? "Tilastokeskus julkaisee vuokrat vain suurimmille kaupungeille, joten luvut ovat koko Uudenmaan keskiarvoja. Pääkaupunkiseudun vuokrat nostavat niitä selvästi."
+              : `Vuokria ei tilastoida postinumeroittain, joten luvut ovat koko kunnan (${va.nimi}) keskiarvoja.`}
+        {va.tyypit.kaikki.vapaa != null &&
+          ` Vapaarahoitteisen vuokra-asunnon keskivuokra on ${euroaDesimaalilla(va.tyypit.kaikki.vapaa)}/m²`}
+        {va.tyypit.kaikki.vapaa != null &&
+          (muutos != null ? ` (${muutos >= 0 ? "+" : "−"}${desimaalina(Math.abs(muutos))} % vuodessa).` : ".")}
+      </p>
+      <table className="w-full text-left text-[15px] tabular">
+        <caption className="sr-only">
+          Vuokrat huoneluvuittain: {va.nimi}
+          {vertailu ? ` ja ${vertailu.nimi}` : ""}
+        </caption>
+        <thead className="text-[13px] text-muted">
+          <tr className="border-b border-ink">
+            <th scope="col" className="py-2" />
+            <th scope="col" className="py-2 pl-3 text-right font-bold text-ink">
+              {va.nimi}
+            </th>
+            {kk && (
+              <th scope="col" className="py-2 pl-3 text-right font-medium">
+                Kuukausivuokra
+              </th>
+            )}
+            {vertailu && (
+              <th scope="col" className="hidden py-2 pl-3 text-right font-medium sm:table-cell">
+                {vertailu.nimi}
+              </th>
+            )}
+            <th scope="col" className="hidden py-2 pl-3 text-right font-medium sm:table-cell">
+              Valtion tukema
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {rivit.map(([nimi, t]) => {
+            const r = va.tyypit[t];
+            return (
+              <tr key={t} className="border-b border-grid">
+                <th scope="row" className="py-2.5 pr-2 text-left font-normal">
+                  {nimi}
+                </th>
+                <td className="py-2.5 pl-3 text-right font-bold whitespace-nowrap">{neliovuokra(r)}</td>
+                {kk && (
+                  <td className="py-2.5 pl-3 text-right whitespace-nowrap">
+                    {r.kk_mediaani != null ? `${euroa(r.kk_mediaani)}/kk` : "–"}
+                    {r.kk_alakvartiili != null && r.kk_ylakvartiili != null && (
+                      <span className="block text-[13px] text-muted">
+                        {lukuna(r.kk_alakvartiili)}–{euroa(r.kk_ylakvartiili)}
+                      </span>
+                    )}
+                  </td>
+                )}
+                {vertailu && (
+                  <td className="hidden py-2.5 pl-3 text-right whitespace-nowrap text-muted sm:table-cell">
+                    {neliovuokra(vertailu.tyypit[t])}
+                  </td>
+                )}
+                <td className="hidden py-2.5 pl-3 text-right whitespace-nowrap text-muted sm:table-cell">
+                  {r.tuettu != null ? `${euroaDesimaalilla(r.tuettu)}/m²` : "–"}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      <p className="mt-3 text-[13px] text-muted">
+        Keskineliövuokrat {neljannesTekstina(vuokraNeljannes)}, vapaarahoitteiset vuokra-asunnot ellei toisin mainita.
+        {kk && " Kuukausivuokra on kokonaisvuokran mediaani, alla puolet vuokrista sijoittuu välille."} Lähde:
+        Tilastokeskus, asuntojen vuokrat.
+      </p>
+    </div>
   );
 }
 

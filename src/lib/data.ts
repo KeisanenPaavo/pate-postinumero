@@ -1,5 +1,6 @@
 import "server-only";
 import raw from "../../data/generated/uusimaa.json";
+import vuokraRaw from "../../data/generated/vuokrat.json";
 
 // Tiedoston muoto: scripts/etl/build-alueet.mjs
 
@@ -128,4 +129,51 @@ export function hintaSarjat(alue: Alue) {
       kunta: k.hinnat.find((h) => h.vuosi === vuosi)?.kerrostalot ?? null,
     };
   });
+}
+
+// --- Vuokrat (scripts/etl/vuokrat.mjs) ---------------------------------------------
+
+export type VuokraTyyppi = {
+  /** Keskineliövuokra €/m², vapaarahoitteiset ja valtion tukemat asunnot. */
+  vapaa: number | null;
+  vapaa_lkm: number | null;
+  tuettu: number | null;
+  tuettu_lkm: number | null;
+  vapaa_uudet: number | null;
+  /** Vapaarahoitteisten vuokraindeksin vuosimuutos, %. */
+  vapaa_vuosimuutos: number | null;
+  /** Vapaarahoitteisten kokonaisvuokrat €/kk, vain suurimmat kaupungit. */
+  kk_alakvartiili?: number | null;
+  kk_mediaani?: number | null;
+  kk_ylakvartiili?: number | null;
+};
+
+export type VuokraAlue = {
+  koodi: string;
+  nimi: string;
+  /** Osa-alueen postinumeroiden määrä; null, jos alue on kunta tai laajempi. */
+  postinumerot: number | null;
+  /** Kehyskuntien jäsenkunnat. */
+  kunnat?: string[];
+  tyypit: Record<"kaikki" | "yksiot" | "kaksiot" | "kolmiot", VuokraTyyppi>;
+};
+
+const vuokraData = vuokraRaw as unknown as {
+  meta: { neljannes: string; lahde: string };
+  alueet: Record<string, VuokraAlue>;
+  postinumerot: Record<string, string>;
+  kunnat: Record<string, string>;
+};
+
+export const vuokraNeljannes = vuokraData.meta.neljannes;
+
+/**
+ * Tarkin vuokratilaston alue, johon postinumero kuuluu, ja vertailualue: kaupungin osa-alueelle kaupunki,
+ * muille Uusimaa. Vuokria ei tilastoida postinumeroittain.
+ */
+export function alueenVuokrat(alue: Alue): { alue: VuokraAlue; vertailu: VuokraAlue | null } | null {
+  const koodi = vuokraData.postinumerot[alue.pno];
+  if (!koodi) return null;
+  const vertailu = koodi.includes("_") ? koodi.split("_")[0] : koodi !== "MK01" ? "MK01" : null;
+  return { alue: vuokraData.alueet[koodi], vertailu: vertailu ? vuokraData.alueet[vertailu] : null };
 }

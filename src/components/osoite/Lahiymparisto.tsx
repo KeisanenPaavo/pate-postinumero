@@ -123,14 +123,14 @@ export function Lahiymparisto({ keskipiste }: { keskipiste: Piste }) {
     <div>
       <p className="mb-5 max-w-[640px]">
         Lähimmät {luettelo(["kaupat", naytaKoulut && "koulut", naytaPaivakodit && "päiväkodit", "pysäkit"])} {osoite ? "osoitteesta" : "alueen keskeltä"}
-        {junaAsemat.length > 0 && " sekä juna-asemat 3 km säteellä"}. Etäisyydet linnuntietä. Valitse kohde kartalta tai listasta,
-        niin näet kävelyreitin ja -ajan.
+        {junaAsemat.length > 0 && " sekä juna-asemat 3 km säteellä"}. Etäisyydet linnuntietä. Valitse kohde kartalta tai avaa luokan
+        lista kartan alta, niin näet kävelyreitin ja -ajan.
       </p>
       <LahiKartta lahto={lahto} onOsoite={!!osoite} kohteet={kohteet} valittu={valittu} reitti={reitti} onValitse={valitse} />
       <p className="sr-only" aria-live="polite">
         {valittu && kavely.data ? `Kävelyreitti kohteeseen ${valittu.nimi}: ${kavely.data.minuutit} minuuttia, ${etaisyys(kavely.data.metrit / 1000)}.` : ""}
       </p>
-      <div className="mt-6 grid gap-x-10 gap-y-8 sm:grid-cols-2">
+      <div className="mt-6 border-t border-ink">
         <Lista laji="kauppa" kohteet={lista("kauppa")} valittu={valittu} reitti={reitti} onValitse={valitse} tila={ladataan ? "…" : lahella.virhe ? "Haku epäonnistui." : "Ei kauppoja lähellä."} />
         <Lista
           laji="pysakki"
@@ -165,6 +165,10 @@ export function Lahiymparisto({ keskipiste }: { keskipiste: Piste }) {
   );
 }
 
+/**
+ * Yksi lähipalveluluokka tiiviinä rivinä: otsikko, lähin kohde ja etäisyys. Rivistä aukeaa koko lista.
+ * Lista aukeaa itsestään, kun siihen kuuluva kohde valitaan kartalta, jotta kävelyaika näkyy myös tekstinä.
+ */
 function Lista({
   laji,
   kohteet,
@@ -186,48 +190,87 @@ function Lista({
   huomautus?: string | null;
   tila: string;
 }) {
+  const [auki, setAuki] = useState(false);
+  const valittuTassa = valittu?.laji === laji;
+  // Kartalta valittu kohde avaa listansa (tilan säätö renderöinnin aikana, ks. React: "adjusting state when a prop changes").
+  const [edellinenValinta, setEdellinenValinta] = useState<string | null>(null);
+  const valinta = valittuTassa ? valittu.avain : null;
+  if (valinta !== edellinenValinta) {
+    setEdellinenValinta(valinta);
+    if (valinta) setAuki(true);
+  }
+
+  const lahin = kohteet[0];
+  const id = `lahella-${laji}`;
   return (
-    <section aria-label={LAJIT[laji].otsikko}>
-      <h3 className="flex items-center gap-2 border-b border-ink pb-2 font-semibold">
-        <Symboli ikoni={LAJIT[laji].ikoni} />
-        {LAJIT[laji].otsikko}
+    <section aria-label={LAJIT[laji].otsikko} className="border-b border-rule">
+      <h3>
+        <button
+          type="button"
+          aria-expanded={auki}
+          aria-controls={id}
+          disabled={!kohteet.length}
+          onClick={() => setAuki(!auki)}
+          className="flex min-h-12 w-full items-center gap-3 py-2 text-left text-[15px] enabled:hover:bg-grid"
+        >
+          <Symboli ikoni={LAJIT[laji].ikoni} />
+          <span className="w-28 shrink-0 font-semibold sm:w-36">{LAJIT[laji].otsikko}</span>
+          <span className="min-w-0 flex-1 truncate text-muted">
+            {lahin ? (
+              <>
+                <span className="sr-only">lähin: </span>
+                {lahin.nimi}
+              </>
+            ) : (
+              tila
+            )}
+          </span>
+          {lahin && <span className="font-semibold whitespace-nowrap tabular">{lahin.lisa}</span>}
+          <svg
+            aria-hidden
+            viewBox="0 0 16 16"
+            className={`size-4 shrink-0 text-muted transition-transform ${auki ? "rotate-180" : ""} ${kohteet.length ? "" : "invisible"}`}
+          >
+            <path d="M3.5 6l4.5 4.5L12.5 6" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </button>
       </h3>
-      {huomautus && <p className="border-b border-rule py-2 text-sm text-muted">{huomautus}</p>}
-      {kohteet.length ? (
-        <ul>
-          {kohteet.map((k) => {
-            const on = valittu?.avain === k.avain;
-            return (
-              <li key={k.avain} className="border-b border-rule">
-                <button
-                  type="button"
-                  aria-pressed={on}
-                  onClick={() => onValitse(k)}
-                  className={`flex w-full items-baseline gap-4 py-2.5 text-left text-[15px] hover:bg-grid ${on ? "bg-grid" : ""}`}
-                >
-                  {rivinSymboli && (
-                    <span className="self-center">
-                      <Symboli ikoni={k.ikoni} pieni />
-                      <span className="sr-only">{IKONI_NIMI[k.ikoni]}: </span>
-                    </span>
-                  )}
-                  <span className="min-w-0 flex-1">
-                    <span className={on ? "font-semibold" : ""}>{k.nimi}</span>
-                    {k.kuvaus && <span className="block text-sm text-muted">{k.kuvaus}</span>}
-                    {on && (
-                      <span className="block text-sm font-semibold text-accent">
-                        {reitti.data ? kavelyTeksti(reitti.data) : reitti.virhe ? "Kävelyreittiä ei saatu." : "Haetaan kävelyreittiä…"}
+      {auki && kohteet.length > 0 && (
+        <div id={id} className="pb-3 pl-9 sm:pl-[10.75rem]">
+          {huomautus && <p className="border-t border-rule py-2 text-sm text-muted">{huomautus}</p>}
+          <ul>
+            {kohteet.map((k) => {
+              const on = valittu?.avain === k.avain;
+              return (
+                <li key={k.avain} className="border-t border-rule">
+                  <button
+                    type="button"
+                    aria-pressed={on}
+                    onClick={() => onValitse(k)}
+                    className={`flex w-full items-baseline gap-4 py-2 pr-7 text-left text-[15px] hover:bg-grid ${on ? "bg-grid" : ""}`}
+                  >
+                    {rivinSymboli && (
+                      <span className="self-center">
+                        <Symboli ikoni={k.ikoni} pieni />
+                        <span className="sr-only">{IKONI_NIMI[k.ikoni]}: </span>
                       </span>
                     )}
-                  </span>
-                  <span className="font-semibold whitespace-nowrap tabular">{k.lisa}</span>
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-      ) : (
-        <p className="py-2.5 text-[15px] text-muted">{tila}</p>
+                    <span className="min-w-0 flex-1">
+                      <span className={on ? "font-semibold" : ""}>{k.nimi}</span>
+                      {k.kuvaus && <span className="block text-sm text-muted">{k.kuvaus}</span>}
+                      {on && (
+                        <span className="block text-sm font-semibold text-accent">
+                          {reitti.data ? kavelyTeksti(reitti.data) : reitti.virhe ? "Kävelyreittiä ei saatu." : "Haetaan kävelyreittiä…"}
+                        </span>
+                      )}
+                    </span>
+                    <span className="font-semibold whitespace-nowrap tabular">{k.lisa}</span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
       )}
     </section>
   );
