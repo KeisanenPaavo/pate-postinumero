@@ -4,7 +4,7 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import type { GeoJSONSource, Map as MapLibreMap, Marker, Popup } from "maplibre-gl";
 import { useEffect, useRef, useState } from "react";
 import { IKONI_NIMI, ikoniKulkuneuvolle, ryhma, symboliHtml, type Ikoni } from "./symbolit";
-import { etaisyys, useKavely, useLahella, useOsoite, usePisteTiedot, type Kavely, type Piste } from "./yhteiset";
+import { etaisyys, useAsetukset, useKavely, useLahella, useOsoite, usePisteTiedot, type Kavely, type Piste } from "./yhteiset";
 
 type Laji = "kauppa" | "koulu" | "paivakoti" | "pysakki" | "juna";
 type Kohde = Piste & {
@@ -31,6 +31,12 @@ const LAJIT: Record<Laji, { otsikko: string; ikoni: Ikoni }> = {
 // Selitteen järjestys: asunto, palvelut, joukkoliikenne.
 const IKONIJARJESTYS: Ikoni[] = ["asunto", "kauppa", "koulu", "paivakoti", "bussi", "ratikka", "metro", "lautta", "juna"];
 
+/** ["a", "b", "c"] → "a, b ja c" (false-arvot ohitetaan). */
+const luettelo = (osat: (string | false)[]) => {
+  const t = osat.filter((x): x is string => !!x);
+  return t.length > 1 ? `${t.slice(0, -1).join(", ")} ja ${t.at(-1)}` : (t[0] ?? "");
+};
+
 const kavelyTeksti = (k: Kavely) => `Kävellen ${k.minuutit} min · ${etaisyys(k.metrit / 1000)}`;
 
 /** Kuvasymboli pyöreässä merkissä (sama kartalla, selitteessä ja listoissa). */
@@ -54,6 +60,9 @@ export function Lahiymparisto({ keskipiste }: { keskipiste: Piste }) {
   const lahella = useLahella(lahto);
   const tiedot = usePisteTiedot(lahto);
   const [valittuAvain, setValittuAvain] = useState<string | null>(null);
+  const asetukset = useAsetukset();
+  const naytaKoulut = asetukset.nakyy("koulut");
+  const naytaPaivakodit = asetukset.nakyy("paivakodit");
 
   // Kartalle oppilaaksiottoalueen lähikoulut (suomenkieliset; Espoossa alueen lähin koulu) sekä 3 lähintä
   // peruskoulua ja lähin lukio (koko lista Koulut-osiossa). Sama koulu vain kerran.
@@ -85,8 +94,8 @@ export function Lahiymparisto({ keskipiste }: { keskipiste: Piste }) {
   });
   const kohteet: Kohde[] = [
     ...(lahella.data?.kaupat ?? []).map((k) => kohde("kauppa", "kauppa", k, k.tyyppi, k.km * 1000)),
-    ...koulut.map((k) => kohde("koulu", "koulu", k, k.tyyppi.startsWith("lähikoulu") || k.tyyppi.startsWith("oppilasalueen") ? k.tyyppi : k.tyyppi.toLowerCase().replace(/t$/, ""), k.km * 1000)),
-    ...(lahella.data?.paivakodit ?? []).map((k) => kohde("paivakoti", "paivakoti", k, null, k.km * 1000)),
+    ...(naytaKoulut ? koulut : []).map((k) => kohde("koulu", "koulu", k, k.tyyppi.startsWith("lähikoulu") || k.tyyppi.startsWith("oppilasalueen") ? k.tyyppi : k.tyyppi.toLowerCase().replace(/t$/, ""), k.km * 1000)),
+    ...(naytaPaivakodit ? (lahella.data?.paivakodit ?? []) : []).map((k) => kohde("paivakoti", "paivakoti", k, null, k.km * 1000)),
     ...(lahella.data?.pysakit ?? []).map((s) =>
       kohde("pysakki", ikoniKulkuneuvolle(s.kulkuneuvo), s, `${s.kulkuneuvo} ${s.linjat.slice(0, 5).join(", ")}${s.linjat.length > 5 ? " …" : ""}`, s.metrit),
     ),
@@ -113,7 +122,7 @@ export function Lahiymparisto({ keskipiste }: { keskipiste: Piste }) {
   return (
     <div>
       <p className="mb-5 max-w-[640px]">
-        Lähimmät kaupat, koulut, päiväkodit ja pysäkit {osoite ? "osoitteesta" : "alueen keskeltä"}
+        Lähimmät {luettelo(["kaupat", naytaKoulut && "koulut", naytaPaivakodit && "päiväkodit", "pysäkit"])} {osoite ? "osoitteesta" : "alueen keskeltä"}
         {junaAsemat.length > 0 && " sekä juna-asemat 3 km säteellä"}. Etäisyydet linnuntietä. Valitse kohde kartalta tai listasta,
         niin näet kävelyreitin ja -ajan.
       </p>
@@ -133,15 +142,19 @@ export function Lahiymparisto({ keskipiste }: { keskipiste: Piste }) {
           huomautus={lahella.data?.pysakkiSade === 2000 && lahella.data.pysakit?.length ? "800 metrin säteellä ei ole pysäkkejä – näytetään lähimmät 2 km säteeltä." : null}
           tila={ladataan ? "…" : lahella.data?.pysakit === null || lahella.virhe ? "Pysäkkihaku ei juuri nyt toimi." : "Ei pysäkkejä 2 km säteellä."}
         />
-        <Lista
-          laji="koulu"
-          kohteet={lista("koulu")}
-          valittu={valittu}
-          reitti={reitti}
-          onValitse={valitse}
-          tila={tiedot.virhe ? "Haku epäonnistui." : tiedot.data ? "Ei kouluja lähellä." : "…"}
-        />
-        <Lista laji="paivakoti" kohteet={lista("paivakoti")} valittu={valittu} reitti={reitti} onValitse={valitse} tila={ladataan ? "…" : lahella.virhe ? "Haku epäonnistui." : "Ei päiväkoteja lähellä."} />
+        {naytaKoulut && (
+          <Lista
+            laji="koulu"
+            kohteet={lista("koulu")}
+            valittu={valittu}
+            reitti={reitti}
+            onValitse={valitse}
+            tila={tiedot.virhe ? "Haku epäonnistui." : tiedot.data ? "Ei kouluja lähellä." : "…"}
+          />
+        )}
+        {naytaPaivakodit && (
+          <Lista laji="paivakoti" kohteet={lista("paivakoti")} valittu={valittu} reitti={reitti} onValitse={valitse} tila={ladataan ? "…" : lahella.virhe ? "Haku epäonnistui." : "Ei päiväkoteja lähellä."} />
+        )}
         {junaAsemat.length > 0 && <Lista laji="juna" kohteet={lista("juna")} valittu={valittu} reitti={reitti} onValitse={valitse} tila="" />}
       </div>
       <p className="mt-4 text-[13px] text-muted">

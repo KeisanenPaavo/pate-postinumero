@@ -132,6 +132,17 @@ a {
   font-variant-numeric: tabular-nums;
 }
 
+/* Raportin osionumerot lasketaan CSS-laskurilla, jotta käyttäjän piilottama osio (esim. Koulut) ei jätä aukkoa numerointiin. */
+.osiot {
+  counter-reset: osio;
+}
+.osiot > section {
+  counter-increment: osio;
+}
+.osio-nro::before {
+  content: counter(osio, decimal-leading-zero);
+}
+
 /* Pieni kapiteeli-yläotsake (raportin tunniste, osiovälit). */
 .kapiteeli {
   font-size: 0.8125rem;

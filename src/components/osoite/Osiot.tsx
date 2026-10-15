@@ -7,6 +7,7 @@ import { Kartta } from "../Kartta";
 import { JakoPainike } from "../JakoPainike";
 import { OsoiteHaku, type Osoite } from "../OsoiteHaku";
 import { useVertailu } from "../vertailu/useVertailu";
+import { RaportinAsetukset } from "./Asetukset";
 import { pvm, type KaavoitusTiedot } from "./Kaavoitus";
 import {
   OHJEARVO_PAIVA,
@@ -18,18 +19,24 @@ import {
   minuuttia,
   pisteParam,
   useJson,
+  useAsetukset,
   useKavely,
   useLahella,
   useMatka,
   useOsoite,
   usePisteTiedot,
   type Kohde,
+  type Kulkutapa,
+  type Matka,
   type Oppilaaksiotto,
   type Piste,
   type Tuomio,
 } from "./yhteiset";
 
 const isoAlku = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+
+/** Kulkutavan matka-aika minuutteina. */
+const aika = (m: Matka, k: Kulkutapa) => (k === "julkinen" ? m.julkinen : k === "auto" ? (m.auto ?? null) : k === "pyora" ? m.pyora : m.kavely);
 
 /** Melun toinen virke standfirstiin – sama tuomio kuin melu-osiossa, lyhyemmin. */
 function meluVirke(t: Tuomio) {
@@ -63,6 +70,7 @@ export function Osoitepalkki({
   const [muokkaa, setMuokkaa] = useState(false);
   const matka = useMatka(lahto, keskusta);
   const tiedot = usePisteTiedot(lahto);
+  const kulkutapa = useAsetukset().kulkutavat[0];
 
   const [tila, setTila] = useState<{ teksti: string; virhe?: boolean } | null>(null);
 
@@ -88,7 +96,8 @@ export function Osoitepalkki({
   }
 
   const osat = [
-    matka.data?.julkinen != null && `${matka.data.julkinen} minuuttia julkisilla Helsingin keskustaan`,
+    matka.data && aika(matka.data, kulkutapa.avain) != null &&
+      `${aika(matka.data, kulkutapa.avain)} minuuttia ${kulkutapa.nimi.toLowerCase()} Helsingin keskustaan`,
     hintaLause,
   ].filter(Boolean);
   const virkkeet = [
@@ -105,13 +114,14 @@ export function Osoitepalkki({
         {virkkeet.join(" ") || " "}
       </p>
       {osoite && !muokkaa ? (
-        <p className="mt-3 flex flex-wrap items-center gap-x-6">
+        <div className="mt-3 flex flex-wrap items-center gap-x-6">
           <button type="button" onClick={() => setMuokkaa(true)} className="linkki min-h-11">
             Vaihda osoite
           </button>
           <VertailuPainike osoite={osoite} />
           <JakoPainike teksti="Jaa raportti" otsikko={`${osoite.nimi} – Aluetarkistus`} url={() => window.location.href} />
-        </p>
+          <RaportinAsetukset />
+        </div>
       ) : (
         <div className="mt-6 max-w-xl">
           {!osoite && (
@@ -131,9 +141,10 @@ export function Osoitepalkki({
             </button>
           )}
           {!osoite && (
-            <p className="mt-2">
+            <div className="mt-2 flex flex-wrap items-center gap-x-6">
               <JakoPainike teksti="Jaa alueen raportti" otsikko={`${alueNimi} – Aluetarkistus`} url={() => window.location.href} />
-            </p>
+              <RaportinAsetukset />
+            </div>
           )}
         </div>
       )}
@@ -196,6 +207,8 @@ export function Yhteenveto({
   const { osoite, lahto } = useOsoite(keskipiste);
   const matka = useMatka(lahto, keskusta);
   const tiedot = usePisteTiedot(lahto);
+  const asetukset = useAsetukset();
+  const kulkutapa = asetukset.kulkutavat[0].avain;
   const melu = osoite && tiedot.data ? meluTuomio(tiedot.data.melu) : null;
   // Lähikoulu oppilaaksiottoalueelta (Helsinki, Espoo); muualla lähin peruskoulu linnuntietä.
   const lahikoulu = ensisijainenLahikoulu(tiedot.data?.oppilaaksiotto);
@@ -206,7 +219,8 @@ export function Yhteenveto({
   // Kävelyreitit lähimpiin arjen kohteisiin (samat haut kuin Lähiympäristö-kartalla – välimuisti jaetaan).
   const kavelyPysakki = useKavely(lahto, pysakki);
   const kavelyKauppa = useKavely(lahto, kauppa);
-  const kavelyKoulu = useKavely(lahto, koulu ?? null);
+  const naytaKoulu = asetukset.nakyy("koulut");
+  const kavelyKoulu = useKavely(lahto, naytaKoulu ? (koulu ?? null) : null);
   const yli = melu?.db != null && melu.db >= OHJEARVO_PAIVA;
   // Kaavoitus: vektoriaineisto vain Helsingistä (muualla rivi jätetään pois).
   const kaava = useJson<KaavoitusTiedot | null>(kunta === "091" ? `/api/kaavoitus?p=${pisteParam(lahto)}&kunta=${kunta}` : null).data;
@@ -255,16 +269,8 @@ export function Yhteenveto({
           <Rivi
             href="#liikenne"
             otsikko="Keskustaan"
-            arvo={matka.data ? minuuttia(matka.data.julkinen) : matka.virhe ? "–" : ladataan}
-            selite={
-              matka.data
-                ? matka.data.julkinen == null
-                  ? "Julkista yhteyttä ei löytynyt arkiaamuna klo 8."
-                  : `${matka.data.reitti ?? "julkisilla"}, arkiaamuna klo 8`
-                : matka.virhe
-                  ? "Reittiä ei saatu."
-                  : undefined
-            }
+            arvo={matka.data ? minuuttia(aika(matka.data, kulkutapa)) : matka.virhe ? "–" : ladataan}
+            selite={matka.data ? keskustaSelite(matka.data, kulkutapa) : matka.virhe ? "Reittiä ei saatu." : undefined}
           />
           <Rivi href="#lahella" otsikko="Lähin pysäkki" arvo={rPysakki.arvo} selite={rPysakki.selite} />
           <Rivi href="#lahella" otsikko="Lähin ruokakauppa" arvo={rKauppa.arvo} selite={rKauppa.selite} />
@@ -302,16 +308,27 @@ export function Yhteenveto({
               ) : undefined
             }
           />
-          <Rivi
-            href="#koulut"
-            otsikko={lahikoulu ? "Lähikoulu" : "Lähin peruskoulu"}
-            arvo={rKoulu.arvo}
-            selite={rKoulu.selite}
-          />
+          {naytaKoulu && (
+            <Rivi
+              href="#koulut"
+              otsikko={lahikoulu ? "Lähikoulu" : "Lähin peruskoulu"}
+              arvo={rKoulu.arvo}
+              selite={rKoulu.selite}
+            />
+          )}
         </tbody>
       </table>
     </section>
   );
+}
+
+/** Tiivistelmän Keskustaan-rivin selite käyttäjän ensisijaiselle kulkutavalle. */
+function keskustaSelite(m: Matka, k: Kulkutapa) {
+  if (k === "julkinen") return m.julkinen == null ? "Julkista yhteyttä ei löytynyt arkiaamuna klo 8." : `${m.reitti ?? "julkisilla"}, arkiaamuna klo 8`;
+  if (k === "auto")
+    return m.auto == null ? "Ajoreittiä ei löytynyt." : `autolla${m.autoMetrit != null ? ` ${etaisyys(m.autoMetrit / 1000)}` : ""}, ilman ruuhkaa`;
+  if (k === "pyora") return m.pyora == null ? "Pyöräreittiä ei löytynyt." : `pyörällä${m.pyoraMetrit != null ? ` ${etaisyys(m.pyoraMetrit / 1000)}` : ""}`;
+  return m.kavely == null ? "Kävelyreittiä ei löytynyt." : "kävellen";
 }
 
 // --- Liikenne ------------------------------------------------------------------------
@@ -368,10 +385,14 @@ export function Liikenne({ keskipiste, oletuskohteet }: { keskipiste: Piste; ole
   const omatRaw = useSyncExternalStore(tilaaOmat, lueOmatRaw, () => "[]");
   const omat = useMemo(() => jasennaOmat(omatRaw), [omatRaw]);
   const [lisaa, setLisaa] = useState(false);
+  const autolla = useAsetukset().nakyy("auto");
 
   return (
     <div>
-      <p className="mb-4 max-w-[640px]">Nopein reitti seuraavana arkiaamuna klo 8 lähtien {osoite ? "osoitteesta" : "alueen keskeltä"}.</p>
+      <p className="mb-4 max-w-[640px]">
+        Nopein reitti seuraavana arkiaamuna klo 8 lähtien {osoite ? "osoitteesta" : "alueen keskeltä"}.
+        {autolla && " Ajoaika autolla on laskettu ilman ruuhkaa – aamuruuhkassa matka kestää usein pidempään."}
+      </p>
       <ul className="space-y-6">
         {oletuskohteet.map((k) => (
           <MatkaRivi key={k.nimi} lahto={lahto} kohde={k} />
@@ -411,7 +432,15 @@ export function Liikenne({ keskipiste, oletuskohteet }: { keskipiste: Piste; ole
 
 function MatkaRivi({ lahto, kohde, onPoista }: { lahto: Piste; kohde: Kohde; onPoista?: () => void }) {
   const { data, virhe } = useMatka(lahto, kohde);
-  const kavely = !data || (data.kavely != null && data.kavely <= 60);
+  // Yli tunnin kävelyä ei näytetä (ei arjen vaihtoehto).
+  const kavelyOk = !data || (data.kavely != null && data.kavely <= 60);
+  const tavat = useAsetukset().kulkutavat.filter((k) => k.avain !== "kavely" || kavelyOk);
+  const lisa = (k: Kulkutapa) => {
+    if (!data) return undefined;
+    if (k === "julkinen") return data.reitti ? `${data.reitti}${data.vaihdot ? `, ${data.vaihdot} vaihto${data.vaihdot > 1 ? "a" : ""}` : ""}` : undefined;
+    if (k === "auto") return data.autoMetrit != null ? etaisyys(data.autoMetrit / 1000) : undefined;
+    return undefined;
+  };
   return (
     <li>
       <div className="flex flex-wrap items-baseline justify-between gap-x-4">
@@ -430,21 +459,23 @@ function MatkaRivi({ lahto, kohde, onPoista }: { lahto: Piste; kohde: Kohde; onP
       {virhe ? (
         <p className="border-y border-ink py-4 text-accent">Reittiä ei saatu. Yritä myöhemmin uudelleen.</p>
       ) : (
-        <dl className={`mt-2 grid border-y border-ink ${kavely ? "grid-cols-3" : "grid-cols-2"}`}>
-          <Aika nimi="Julkisilla" arvo={data ? minuuttia(data.julkinen) : "…"} lisa={data?.reitti ? `${data.reitti}${data.vaihdot ? `, ${data.vaihdot} vaihto${data.vaihdot > 1 ? "a" : ""}` : ""}` : undefined} />
-          <Aika nimi="Pyörällä" arvo={data ? minuuttia(data.pyora) : "…"} />
-          {kavely && <Aika nimi="Kävellen" arvo={data ? minuuttia(data.kavely) : "…"} />}
+        <dl className={`mt-2 grid border-y border-ink ${SARAKKEET[tavat.length]}`}>
+          {tavat.map((k) => (
+            <Aika key={k.avain} nimi={k.nimi} arvo={data ? minuuttia(aika(data, k.avain)) : "…"} lisa={lisa(k.avain)} tiivis={tavat.length > 3} />
+          ))}
         </dl>
       )}
     </li>
   );
 }
 
-function Aika({ nimi, arvo, lisa }: { nimi: string; arvo: string; lisa?: string }) {
+const SARAKKEET = ["grid-cols-1", "grid-cols-1", "grid-cols-2", "grid-cols-3", "grid-cols-4"];
+
+function Aika({ nimi, arvo, lisa, tiivis }: { nimi: string; arvo: string; lisa?: string; tiivis?: boolean }) {
   return (
-    <div className="flex flex-col py-4 pr-3 not-first:border-l not-first:border-rule not-first:pl-3 sm:not-first:pl-4">
+    <div className={`flex min-w-0 flex-col py-4 not-first:border-l not-first:border-rule sm:pr-3 sm:not-first:pl-4 ${tiivis ? "pr-2 not-first:pl-2" : "pr-3 not-first:pl-3"}`}>
       <dt className="text-[13px] text-muted">{nimi}</dt>
-      <dd className="luku text-[1.75rem] leading-tight sm:text-[2.5rem]">{arvo}</dd>
+      <dd className={`luku leading-tight sm:text-[2.5rem] ${tiivis ? "text-[1.375rem]" : "text-[1.75rem]"}`}>{arvo}</dd>
       {lisa && <dd className="text-sm">{lisa}</dd>}
     </div>
   );

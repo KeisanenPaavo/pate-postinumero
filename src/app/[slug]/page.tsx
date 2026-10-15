@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import { HintaKaavio } from "@/components/HintaKaavio";
 import { IkaKaavio, type IkaRyhma } from "@/components/IkaKaavio";
+import { Piilotettava } from "@/components/osoite/Asetukset";
 import { KaavoitusOsio } from "@/components/osoite/Kaavoitus";
 import { Lahiymparisto } from "@/components/osoite/Lahiymparisto";
 import { Koulut, Liikenne, MeluOsio, Osoitepalkki, Yhteenveto } from "@/components/osoite/Osiot";
@@ -62,7 +63,7 @@ const OSIOT = [
   ["liikenne", "Liikenne"],
   ["melu", "Melu"],
   ["kaavoitus", "Kaavoitus"],
-  ["koulut", "Koulut"],
+  ["koulut", "Koulut", "koulut"],
   ["asukkaat", "Asukkaat"],
 ] as const;
 
@@ -141,7 +142,7 @@ async function AlueSisalto({ params }: Pick<PageProps<"/[slug]">, "params">) {
     .join(" ");
 
   return (
-    <article>
+    <article className="osiot">
       <header>
         <p className="kapiteeli text-accent">
           Alueraportti · {alue.nimi} {alue.pno} · {k.nimi}
@@ -158,13 +159,13 @@ async function AlueSisalto({ params }: Pick<PageProps<"/[slug]">, "params">) {
         </Suspense>
       </header>
 
-      <Osio nro={1} id="lahella" otsikko="Lähiympäristö">
+      <Osio id="lahella" otsikko="Lähiympäristö">
         <Suspense fallback={<p className="text-muted">Ladataan karttaa…</p>}>
           <Lahiymparisto keskipiste={alue.keskipiste} />
         </Suspense>
       </Osio>
 
-      <Osio nro={2} id="hinnat" otsikko="Hinnat" johdanto={hintaJohdanto}>
+      <Osio id="hinnat" otsikko="Hinnat" johdanto={hintaJohdanto}>
         {sarjat.some((s) => s.alue != null) && <HintaKaavio data={sarjat} alueNimi={alue.nimi} kuntaNimi={k.nimi} />}
         <HuoneHinnat alue={alue} />
         <p className="mt-3 text-[13px] text-muted">
@@ -173,31 +174,33 @@ async function AlueSisalto({ params }: Pick<PageProps<"/[slug]">, "params">) {
         </p>
       </Osio>
 
-      <Osio nro={3} id="liikenne" otsikko="Liikenne">
+      <Osio id="liikenne" otsikko="Liikenne">
         <Suspense fallback={<p className="text-muted">Lasketaan reittejä…</p>}>
           <Liikenne keskipiste={alue.keskipiste} oletuskohteet={oletuskohteet} />
         </Suspense>
       </Osio>
 
-      <Osio nro={4} id="melu" otsikko="Melu">
+      <Osio id="melu" otsikko="Melu">
         <Suspense fallback={<p className="text-muted">Ladataan melutietoja…</p>}>
           <MeluOsio keskipiste={alue.keskipiste} pno={alue.pno} kunta={alue.kunta} />
         </Suspense>
       </Osio>
 
-      <Osio nro={5} id="kaavoitus" otsikko="Kaavoitus ja rakentaminen">
+      <Osio id="kaavoitus" otsikko="Kaavoitus ja rakentaminen">
         <Suspense fallback={<p className="text-muted">Ladataan kaavoitustietoja…</p>}>
           <KaavoitusOsio keskipiste={alue.keskipiste} pno={alue.pno} kunta={alue.kunta} />
         </Suspense>
       </Osio>
 
-      <Osio nro={6} id="koulut" otsikko="Koulut">
-        <Suspense fallback={<p className="text-muted">Haetaan kouluja…</p>}>
-          <Koulut keskipiste={alue.keskipiste} />
-        </Suspense>
-      </Osio>
+      <Piilotettava aihe="koulut">
+        <Osio id="koulut" otsikko="Koulut">
+          <Suspense fallback={<p className="text-muted">Haetaan kouluja…</p>}>
+            <Koulut keskipiste={alue.keskipiste} />
+          </Suspense>
+        </Osio>
+      </Piilotettava>
 
-      <Osio nro={7} id="asukkaat" otsikko="Asukkaat" johdanto={asukasJohdanto}>
+      <Osio id="asukkaat" otsikko="Asukkaat" johdanto={asukasJohdanto}>
         <VertailuTaulukko alue={p} kunta={k.paavo} alueNimi={alue.nimi} kuntaNimi={k.nimi} />
         <h3 className="mt-10 mb-3 font-semibold">Ikärakenne</h3>
         <IkaKaavio ryhmat={ryhmat} alueNimi={alue.nimi} vertailuNimi={k.nimi} />
@@ -210,8 +213,8 @@ async function AlueSisalto({ params }: Pick<PageProps<"/[slug]">, "params">) {
   );
 }
 
-/** Numeroitu raporttiosio: vasemmalla numero ja otsikko, oikealla sisältö. */
-function Osio({ nro, id, otsikko, johdanto, children }: { nro: number; id: string; otsikko: string; johdanto?: string; children: React.ReactNode }) {
+/** Numeroitu raporttiosio (numero CSS-laskurista, ks. .osiot): vasemmalla numero ja otsikko, oikealla sisältö. */
+function Osio({ id, otsikko, johdanto, children }: { id: string; otsikko: string; johdanto?: string; children: React.ReactNode }) {
   return (
     <section
       id={id}
@@ -219,9 +222,7 @@ function Osio({ nro, id, otsikko, johdanto, children }: { nro: number; id: strin
       className="mt-14 grid scroll-mt-28 gap-x-12 gap-y-5 sm:mt-16 sm:scroll-mt-16 md:grid-cols-[200px_minmax(0,1fr)]"
     >
       <div className="flex items-baseline gap-4 border-t border-ink pt-4 md:block md:border-0 md:pt-0">
-        <p aria-hidden className="font-serif text-[2.75rem] leading-none text-accent tabular">
-          {String(nro).padStart(2, "0")}
-        </p>
+        <p aria-hidden className="osio-nro font-serif text-[2.75rem] leading-none text-accent tabular" />
         <h2 id={`${id}-otsikko`} className="font-serif text-[1.875rem] leading-tight font-semibold md:mt-2">
           {otsikko}
         </h2>

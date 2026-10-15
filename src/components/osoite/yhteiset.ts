@@ -1,7 +1,7 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 
 export type Piste = { lat: number; lon: number };
 export type Kohde = Piste & { nimi: string };
@@ -11,6 +11,9 @@ export type Matka = {
   reitti: string | null;
   pyora: number | null;
   kavely: number | null;
+  /** Autolla ilman ruuhkaa. */
+  auto?: number | null;
+  autoMetrit?: number | null;
   pyoraMetrit?: number | null;
   julkinenMetrit?: number | null;
 };
@@ -188,3 +191,41 @@ export const VERTAILU = selainLista<Vertailtava>("vertailu", 3);
 /** Vertailun vapaasti valittava kohdeosoite (esim. työpaikka), johon matkat lasketaan kaikista vertailtavista. */
 export const VERTAILUKOHDE = selainLista<Kohde>("vertailuKohde", 1);
 export const samaPiste = (a: Piste, b: Piste) => Math.abs(a.lat - b.lat) < 1e-4 && Math.abs(a.lon - b.lon) < 1e-4;
+
+// --- Käyttäjän preferenssit: mitä raportissa näytetään ------------------------------------
+
+export type Kulkutapa = "julkinen" | "auto" | "pyora" | "kavely";
+export type Aihe = "paivakodit" | "koulut" | Kulkutapa;
+
+/** Kulkutavat näyttöjärjestyksessä; ensimmäinen näkyvä on "ensisijainen" (tiivistelmä, otsikkovirke). */
+export const KULKUTAVAT: { avain: Kulkutapa; nimi: string }[] = [
+  { avain: "julkinen", nimi: "Julkisilla" },
+  { avain: "auto", nimi: "Autolla" },
+  { avain: "pyora", nimi: "Pyörällä" },
+  { avain: "kavely", nimi: "Kävellen" },
+];
+export const PALVELUAIHEET: { avain: Aihe; nimi: string }[] = [
+  { avain: "paivakodit", nimi: "Päiväkodit" },
+  { avain: "koulut", nimi: "Koulut" },
+];
+
+/** Piilotetut aiheet tallennetaan listana; oletuksena kaikki näkyy. */
+const PIILOTETUT = selainLista<Aihe>("piilotetut", 10);
+
+export function useAsetukset() {
+  const raw = useSyncExternalStore(PIILOTETUT.tilaa, PIILOTETUT.lue, () => "[]");
+  const piilotetut = useMemo(() => new Set(PIILOTETUT.jasenna(raw)), [raw]);
+  const kulkutavat = KULKUTAVAT.filter((k) => !piilotetut.has(k.avain));
+  return {
+    nakyy: (a: Aihe) => !piilotetut.has(a),
+    piilotettuja: piilotetut.size,
+    /** Näkyvät kulkutavat; vähintään yksi pidetään aina näkyvissä. */
+    kulkutavat: kulkutavat.length ? kulkutavat : KULKUTAVAT.slice(0, 1),
+    aseta: (a: Aihe, nakyy: boolean) => {
+      const uusi = new Set(piilotetut);
+      if (nakyy) uusi.delete(a);
+      else uusi.add(a);
+      PIILOTETUT.tallenna([...uusi]);
+    },
+  };
+}

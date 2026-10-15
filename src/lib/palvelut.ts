@@ -146,6 +146,10 @@ export type Matka = {
   reitti: string | null;
   pyora: number | null;
   kavely: number | null;
+  /** Ajoaika autolla minuutteina ilman ruuhkaa (Digitransitin autoreititys ei huomioi liikennetilannetta). */
+  auto: number | null;
+  /** Ajoreitin pituus metreinä. */
+  autoMetrit: number | null;
   /** Pyöräreitin pituus metreinä (tiematka); null jos reittiä ei löytynyt. */
   pyoraMetrit: number | null;
   /** Nopeimman julkisen yhteyden kokonaismatka metreinä (sis. kävelyosuudet). */
@@ -192,10 +196,11 @@ const pituus = (i?: Itinerary) => (i ? Math.round(i.legs.reduce((s, l) => s + l.
 export async function matka(from: Piste, to: Piste): Promise<Matka> {
   "use cache";
   cacheLife("days");
-  const [julkinen, pyora, kavely] = await Promise.all([
+  const [julkinen, pyora, kavely, auto] = await Promise.all([
     reitit(from, to),
     reitit(from, to, { directOnly: true, direct: ["BICYCLE"] }),
     reitit(from, to, { directOnly: true, direct: ["WALK"] }),
+    reitit(from, to, { directOnly: true, direct: ["CAR"] }),
   ]);
   const paras = julkinen[0];
   const kulkuneuvot = paras?.legs.filter((l) => l.mode !== "WALK") ?? [];
@@ -206,6 +211,8 @@ export async function matka(from: Piste, to: Piste): Promise<Matka> {
     reitti: kulkuneuvot.map((l) => `${KULKUNEUVO[l.mode] ?? l.mode.toLowerCase()} ${l.route?.shortName ?? ""}`.trim()).join(" → ") || null,
     pyora: min(pyora[0]?.duration),
     kavely: min(kavely[0]?.duration),
+    auto: min(auto[0]?.duration),
+    autoMetrit: pituus(auto[0]),
     pyoraMetrit: pituus(pyora[0]),
     julkinenMetrit: pituus(paras),
   };
