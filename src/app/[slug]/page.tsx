@@ -10,6 +10,7 @@ import { Lahiymparisto } from "@/components/osoite/Lahiymparisto";
 import { RakennusTiedot } from "@/components/osoite/Rakennus";
 import { TaloyhtioOsio, VainOsoitteelle } from "@/components/osoite/Taloyhtio";
 import { Tuottolaskuri } from "@/components/osoite/Tuottolaskuri";
+import { VuokraVaiOma } from "@/components/osoite/VuokraVaiOma";
 import { Koulut, Liikenne, MeluOsio, Osoitepalkki, Yhteenveto, type TiivistelmaRivi } from "@/components/osoite/Osiot";
 import { Valilehdet } from "@/components/Valilehdet";
 import {
@@ -97,6 +98,7 @@ function ikaOsuudet(p: Paavo) {
 const OSIOT = [
   ["lahella", "Lähiympäristö"],
   ["hinnat", "Hinnat"],
+  ["vuokra-vai-oma", "Vuokra vai oma"],
   ["sijoittajalle", "Sijoittajalle"],
   ["liikenne", "Liikenne"],
   ["melu", "Melu"],
@@ -238,6 +240,8 @@ async function AlueSisalto({ params }: Pick<PageProps<"/[slug]">, "params">) {
           ]}
         />
       </Osio>
+
+      <VuokraVaiOmaOsio alue={alue} />
 
       <Sijoittajalle alue={alue} />
 
@@ -532,6 +536,35 @@ const OLETUSALAT = { yksiot: 30, kaksiot: 50, kolmiot: 75 } as const;
 /** "5,2 %" / "−1,4 %" osuudesta (0.052). */
 const pros1 = (x: number | null, etumerkki = false) =>
   x == null ? "–" : `${etumerkki ? (x >= 0 ? "+" : "−") : ""}${desimaalina(Math.abs(x) * 100)} %`;
+
+/** Vuokralla vai omistaen -vertailu alueen hinnoilla ja vuokrilla. */
+function VuokraVaiOmaOsio({ alue }: { alue: Alue }) {
+  const t = alueenTuotot(alue);
+  const v = alueenVuokrat(alue);
+  if (!t || !v) return null;
+  const nimi = (tyyppi: string) => HUONETYYPIT.find(([a]) => a === tyyppi)![1].replace("+", "");
+  return (
+    <Osio
+      id="vuokra-vai-oma"
+      otsikko="Vuokralla vai omistaen"
+      johdanto="Paljonko omistaminen vie rahaa kuukaudessa verrattuna vuokralla asumiseen ja kumpi kasvattaa varallisuutta enemmän, kun vuokralainen sijoittaa käsirahan ja kuukausittaisen erotuksen. Oletukset ovat alueen keskihintoja ja -vuokria – korjaa ne katsomasi asunnon luvuilla."
+    >
+      <VuokraVaiOma
+        varaHinta={t.kuntaHinta}
+        vuokramuutos={v.alue.tyypit.kaikki.vapaa_vuosimuutos}
+        tyypit={t.tyypit.map((r) => ({
+          avain: r.tyyppi,
+          nimi: nimi(r.tyyppi),
+          ala: OLETUSALAT[r.tyyppi],
+          hinta: r.hinta,
+          vuokra: r.vuokra,
+          kkVuokra: v.alue.tyypit[r.tyyppi].kk_mediaani ?? null,
+          hintamuutos: r.hintamuutos,
+        }))}
+      />
+    </Osio>
+  );
+}
 
 /** Bruttovuokratuotto huoneluvuittain ja tuottolaskuri. */
 function Sijoittajalle({ alue }: { alue: Alue }) {
