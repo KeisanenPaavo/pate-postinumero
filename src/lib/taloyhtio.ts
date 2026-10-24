@@ -1,5 +1,6 @@
 import "server-only";
 import { cacheLife } from "next/cache";
+import { kuntaGenetiivista } from "./kunnat";
 import type { Lahiosoite } from "./palvelut";
 
 // Taloyhtiön perustiedot PRH:n avoimesta YTJ-rajapinnasta (CC BY 4.0). Rakennuksen ja yhtiön välillä ei ole
@@ -14,7 +15,7 @@ import type { Lahiosoite } from "./palvelut";
 const YTJ = "https://avoindata.prh.fi/opendata-ytj-api/v3/companies";
 const SIVUJA = 5; // 100 yhtiötä sivulla
 
-type Osoite = { type: number; street?: string | null; buildingNumber?: string | null; entrance?: string | null; co?: string | null; postCode?: string | null; postOffices?: { city: string; languageCode: string }[] };
+export type Osoite = { type: number; street?: string | null; buildingNumber?: string | null; entrance?: string | null; co?: string | null; postCode?: string | null; postOffices?: { city: string; languageCode: string }[] };
 type YtjYhtio = {
   businessId: { value: string };
   names: { name: string; type: string; endDate?: string | null }[];
@@ -89,7 +90,7 @@ const pieni = (s: string) => s.toLocaleLowerCase("fi").replace(/\s+/g, " ").trim
 const regexpSuoja = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 /** Talonumerot merkkijonosta: "4-6" → 4,5,6; "1, 3 ja 5" → 1,3,5. Väli rajataan, ettei "1-99" kata kaikkea. */
-function numerot(s: string): number[] {
+export function numerot(s: string): number[] {
   const tulos: number[] = [];
   for (const osa of s.split(/\s*(?:,|\bja\b|&|\boch\b)\s*/)) {
     const m = osa.match(/^(\d+)\s*[a-zåäö]?\s*(?:[-–]\s*(\d+))?/i);
@@ -102,10 +103,31 @@ function numerot(s: string): number[] {
   return tulos;
 }
 
-/** Onko yhtiön nimessä katu ja talonumero, esim. "Asunto Oy Fleminginkatu 4-6" osoitteelle Fleminginkatu 5. */
-function nimiOsuu(nimi: string, katu: string, nro: number) {
-  const m = pieni(nimi).match(new RegExp(`(?:^|[\\s-])${regexpSuoja(pieni(katu))}\\s+(\\d[\\d\\s,a-zåäö–-]*)`, "i"));
-  return !!m && numerot(m[1]).includes(nro);
+/**
+ * Onko yhtiön nimessä katu ja talonumero, esim. "Asunto Oy Fleminginkatu 4-6" osoitteelle Fleminginkatu 5. Samannimisiä
+ * katuja on monessa kunnassa, joten nimi ei osu, jos siinä on ennen katua toinen kunta ("Asunto Oy Joensuun Kalevankatu
+ * 40-42" Helsingin Kalevankadulle) – yhtiön rekisteriosoite voi silti olla talon kunnassa, jos isännöitsijä on siellä.
+ */
+export function nimiOsuu(nimi: string, katu: string, nro: number, kunta: string | null) {
+  const n = pieni(nimi);
+  const m = n.match(new RegExp(`(?:^|[\\s-])${regexpSuoja(pieni(katu))}\\s+(\\d[\\d\\s,a-zåäö–-]*)`, "i"));
+  if (!m || !numerot(m[1]).includes(nro)) return false;
+  const muuKunta = n
+    .slice(0, m.index)
+    .split(/[\s-]+/)
+    .map(kuntaGenetiivista)
+    .find((k) => k && (!kunta || pieni(k) !== pieni(kunta)));
+  return !muuKunta;
+}
+
+/**
+ * Onko yhtiön rekisteriosoite itse talo: sama katu ja numero samalla postinumerolla tai samassa kunnassa, eikä osoite
+ * ole yrityksen (isännöitsijän) c/o-osoite. Samannimisiä katuja on monessa kunnassa (Kalevankatu Helsingissä ja Joensuussa).
+ */
+export function osoiteOsuu(a: Osoite, talo: { katu: string; nro: number; pno: string | null; kunta: string | null }) {
+  const samaKatu = pieni(a.street ?? "") === pieni(talo.katu) && numerot(a.buildingNumber ?? "").includes(talo.nro);
+  const samaSeutu = (!!talo.pno && a.postCode === talo.pno) || (a.postOffices ?? []).some((p) => !!talo.kunta && pieni(p.city) === pieni(talo.kunta));
+  return samaKatu && samaSeutu && !(a.co && onYritys(a.co));
 }
 
 /** c/o-teksti on yritys (isännöitsijä tai omistaja), jos siinä on yhtiömuoto tai isännöinti. */
@@ -141,7 +163,7 @@ function muunna(y: YtjYhtio, osuma: Taloyhtio["osuma"]): Omit<Taloyhtio, "osoite
 const YHTIOMUOTO = /^(?:as\.?\s*oy|asunto[-\s]?oy|asunto-osakeyhtiö|bostads\s*ab|bostadsaktiebolaget|bab)\s+|\s+(?:as\.?\s*oy|asunto oy|bostads ab)$/i;
 
 /** Taloyhtiön ydinnimi vertailuun: "Asunto Oy Papinkuja 2" → "papinkuja 2"; null, jos nimi ei ole asunto-osakeyhtiö. */
-function ydinnimi(nimi: string) {
+export function ydinnimi(nimi: string) {
   const n = pieni(nimi).replace(/[“”"]/g, "");
   if (!YHTIOMUOTO.test(n)) return null;
   return n.replace(YHTIOMUOTO, "").replace(/\s+/g, " ").trim() || null;
@@ -261,9 +283,9 @@ export async function taloyhtiotLahella(
     }
     let paras: { e: Ehdokas; osuma: Taloyhtio["osuma"] } | null = null;
     for (const e of ehdokkaat) {
-      const osuma = y.names.some((n) => nimiOsuu(n.name, e.katu, e.nro)) && samaSeutu(y, e)
+      const osuma = y.names.some((n) => nimiOsuu(n.name, e.katu, e.nro, e.kunta)) && samaSeutu(y, e)
         ? "nimi"
-        : y.addresses.some((a) => pieni(a.street ?? "") === pieni(e.katu) && numerot(a.buildingNumber ?? "").includes(e.nro) && !(a.co && onYritys(a.co)))
+        : y.addresses.some((a) => osoiteOsuu(a, e))
           ? "osoite"
           : null;
       if (osuma && (!paras || e.metrit < paras.e.metrit || (e.metrit === paras.e.metrit && osuma === "nimi"))) paras = { e, osuma };

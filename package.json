@@ -15,6 +15,7 @@
     "data:koulut": "node scripts/etl/koulut.mjs",
     "data:oppilasalueet": "node scripts/etl/oppilasalueet.mjs",
     "data:vuokrat": "node scripts/etl/vuokrat.mjs",
+    "data:kunnat": "node scripts/etl/kunnat.mjs",
     "tarkista:piste": "node scripts/check/piste.mjs"
   },
   "dependencies": {

@@ -20,6 +20,7 @@ npm run dev               # http://localhost:3000
 | `npm run data:oppilasalueet` | Espoon oppilaaksiottoalueet → `data/generated/oppilasalueet-espoo.json` (Helsingin alueet haetaan ajonaikaisesti) |
 | `npm run data:palvelut` | Hakee Uudenmaan ruokakaupat ja päiväkodit OpenStreetMapista → `data/generated/palvelupisteet.json` |
 | `npm run data:keskustat` | Geokoodaa kuntakeskukset → `data/config/keskustat.json` |
+| `npm run data:kunnat` | Suomen kuntien nimet taloyhtiöiden nimien tulkintaan → `data/config/kunnat.json` |
 | `npm run tarkista:piste -- <lat> <lon>` | Testaa pistekyselyt (postinumero, melu, koulut) |
 
 Hinnat päivittyvät neljännesvuosittain ja Paavo tammikuussa – aja `npm run data` ja rebuildaa.
