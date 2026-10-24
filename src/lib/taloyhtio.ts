@@ -1,8 +1,9 @@
 import "server-only";
 import { cacheLife } from "next/cache";
+import type { Lahiosoite } from "./palvelut";
 
 // Taloyhtiön perustiedot PRH:n avoimesta YTJ-rajapinnasta (CC BY 4.0). Rakennuksen ja yhtiön välillä ei ole
-// avointa linkkiä, joten yhtiö päätellään osoitteesta:
+// avointa linkkiä, joten yhtiöt päätellään osoitteesta ja sen lähiosoitteista (Digitransit reverse, ~150 m):
 // 1. nimihaku kadunnimellä: yhtiön nimessä on katu ja talonumero ("Asunto Oy Fleminginkatu 4-6"),
 // 2. postinumeron taloyhtiöt, joiden osoite on sama talo eikä c/o-osoite ole yrityksen (isännöitsijän osoitteessa
 //    voi olla satoja muiden talojen yhtiöitä).
@@ -36,6 +37,11 @@ export type Taloyhtio = {
   /** Tunnettu vuokranantaja, jos c/o tai verkkosivu viittaa siihen: yhtiö on todennäköisesti yhden omistajan. */
   vuokranantaja: string | null;
   verkkosivu: string | null;
+  /** Osoite, johon yhtiö osui (nimen tai rekisteriosoitteen perusteella), ja sen etäisyys haetusta osoitteesta. */
+  osoite: string;
+  metrit: number;
+  /** Yhtiö osuu itse haettuun osoitteeseen (sama katu ja numero tai alle 15 m). */
+  samaTalo: boolean;
 };
 
 // Vuokranantajat, joiden nimissä taloyhtiöitä on paljon. Komu Homes ja Intu Enterprises ovat Vella Kotien hallinnoijia.
@@ -112,7 +118,7 @@ function tila(y: YtjYhtio) {
   return "Rekisterissä";
 }
 
-function muunna(y: YtjYhtio, osuma: Taloyhtio["osuma"]): Taloyhtio {
+function muunna(y: YtjYhtio, osuma: Taloyhtio["osuma"]): Omit<Taloyhtio, "osoite" | "metrit" | "samaTalo"> {
   const co = y.addresses.map((a) => a.co?.replace(/^c\/o\s*/i, "").trim()).find(Boolean) ?? null;
   const hoitaja = co && onYritys(co) ? co : null;
   const sivu = y.website?.url?.trim() || null;
@@ -137,32 +143,57 @@ export function jasennaOsoite(teksti: string) {
   return { katu: m[1].trim(), nro: +m[2], kunta: loput.at(-1) ?? null };
 }
 
+type Ehdokas = { katu: string; nro: number; kunta: string | null; pno: string | null; metrit: number; teksti: string };
+
 /**
- * Osoitteen taloyhtiöt (enintään 3). Tyhjä lista = ei löytynyt; heittää, jos PRH ei vastaa.
- * Yksi talo voi kuulua useaan yhtiöön (A- ja B-talo), ja sama nimi voi olla eri kunnissa.
+ * Taloyhtiöt osoitteen ympäriltä (enintään 8), lähin ensin. Taloyhtiön nimi- tai rekisteriosoite ei aina ole sama kuin
+ * asunnon osoite (kulmatalo, porras toisella kadulla), joten verrataan kaikkiin ~150 m säteen osoitteisiin ja
+ * merkitään samaTalo, kun yhtiö osuu itse osoitteeseen. Tyhjä lista = ei löytynyt; heittää, jos PRH ei vastaa.
  */
-export async function taloyhtiot(osoite: string, pno: string | null): Promise<Taloyhtio[]> {
-  const o = jasennaOsoite(osoite);
-  if (!o) return [];
-  const [nimiLista, pnoLista] = await Promise.all([nimella(o.katu), pno ? postinumerolla(pno).catch(() => []) : []]);
+export async function taloyhtiotLahella(osoite: string, lahella: Lahiosoite[], pno: string | null): Promise<Taloyhtio[]> {
+  const oma = jasennaOsoite(osoite);
+  const ehdokkaat: Ehdokas[] = [
+    ...(oma ? [{ ...oma, pno, metrit: 0, teksti: `${oma.katu} ${oma.nro}` }] : []),
+    ...lahella.flatMap((l) => {
+      const nro = numerot(l.numero)[0];
+      return nro ? [{ katu: l.katu, nro, kunta: l.kunta, pno: l.pno, metrit: l.metrit, teksti: `${l.katu} ${l.numero.match(/^\d+(?:\s*[-–]\s*\d+)?/)![0]}` }] : [];
+    }),
+  ];
+  if (!ehdokkaat.length) return [];
+  const samaOsoite = (e: Ehdokas) => !!oma && pieni(e.katu) === pieni(oma.katu) && e.nro === oma.nro;
 
-  const kaupunki = (y: YtjYhtio) => y.addresses.flatMap((a) => a.postOffices ?? []).some((p) => pieni(p.city) === pieni(o.kunta ?? ""));
-  const nimesta = nimiLista.filter((y) => y.names.some((n) => nimiOsuu(n.name, o.katu, o.nro)));
-  // Sama nimi voi olla monessa kunnassa ("Turun Hämeentie 3"): osoitteen kunnan yhtiöt ensin. Jos niitä ei ole
-  // (postiosoite isännöitsijällä toisessa kunnassa), kelpuutetaan vain saman postinumeron yhtiöt.
-  const samaKunta = nimesta.filter(kaupunki);
-  const nimiOsumat = (samaKunta.length ? samaKunta : nimesta).filter((y) => !pno || samaKunta.length || y.addresses.some((a) => a.postCode === pno));
+  const kadut = [...new Set(ehdokkaat.map((e) => e.katu))];
+  const pnot = [...new Set([pno, ...ehdokkaat.map((e) => e.pno)].filter((x): x is string => !!x))].slice(0, 3);
+  const [nimiListat, pnoListat] = await Promise.all([
+    Promise.all(kadut.map((k) => nimella(k))),
+    Promise.all(pnot.map((n) => postinumerolla(n).catch(() => []))),
+  ]);
 
-  const osoitteesta = pnoLista.filter(
-    (y) =>
-      !nimiOsumat.some((n) => n.businessId.value === y.businessId.value) &&
-      y.addresses.some(
-        (a) => pieni(a.street ?? "") === pieni(o.katu) && numerot(a.buildingNumber ?? "").includes(o.nro) && !(a.co && onYritys(a.co)),
-      ),
-  );
+  const yhtiot = new Map<string, YtjYhtio>();
+  for (const y of [...nimiListat.flat(), ...pnoListat.flat()]) yhtiot.set(y.businessId.value, y);
 
-  const tulos = [...nimiOsumat.map((y) => muunna(y, "nimi")), ...osoitteesta.map((y) => muunna(y, "osoite"))];
+  // Sama nimi voi olla monessa kunnassa ("Turun Hämeentie 3"): yhtiön osoitteen pitää olla samassa kunnassa
+  // tai samalla postinumerolla kuin talo.
+  const samaSeutu = (y: YtjYhtio, e: Ehdokas) =>
+    y.addresses.some((a) => a.postCode === e.pno || (a.postOffices ?? []).some((p) => !!e.kunta && pieni(p.city) === pieni(e.kunta)));
+
+  const tulos: Taloyhtio[] = [];
+  for (const y of yhtiot.values()) {
+    let paras: { e: Ehdokas; osuma: Taloyhtio["osuma"] } | null = null;
+    for (const e of ehdokkaat) {
+      const osuma = y.names.some((n) => nimiOsuu(n.name, e.katu, e.nro)) && samaSeutu(y, e)
+        ? "nimi"
+        : y.addresses.some((a) => pieni(a.street ?? "") === pieni(e.katu) && numerot(a.buildingNumber ?? "").includes(e.nro) && !(a.co && onYritys(a.co)))
+          ? "osoite"
+          : null;
+      if (osuma && (!paras || e.metrit < paras.e.metrit || (e.metrit === paras.e.metrit && osuma === "nimi"))) paras = { e, osuma };
+    }
+    if (paras) tulos.push({ ...muunna(y, paras.osuma), osoite: paras.e.teksti, metrit: paras.e.metrit, samaTalo: samaOsoite(paras.e) || paras.e.metrit <= 15 });
+  }
+
   // Lakanneet yhtiöt vain, jos voimassa olevia ei löytynyt (vanha yhtiö on voitu sulauttaa uuteen).
   const voimassa = tulos.filter((t) => t.tila !== "Lakannut");
-  return (voimassa.length ? voimassa : tulos).slice(0, 3);
+  return (voimassa.length ? voimassa : tulos)
+    .sort((a, b) => Number(b.samaTalo) - Number(a.samaTalo) || a.metrit - b.metrit || (a.osuma === "nimi" ? -1 : 1))
+    .slice(0, 8);
 }

@@ -74,6 +74,25 @@ export async function haeOsoitteita(teksti: string): Promise<Osoite[]> {
     .map((f) => ({ nimi: f.properties.label, lon: f.geometry.coordinates[0], lat: f.geometry.coordinates[1] }));
 }
 
+export type Lahiosoite = { katu: string; numero: string; kunta: string | null; pno: string | null; metrit: number };
+
+/** Katuosoitteet pisteen ympäriltä (Digitransit reverse), lähin ensin. Sama talo voi tulla usealla porraskirjaimella. */
+export async function osoitteetLahella(p: Piste, sadeM = 150): Promise<Lahiosoite[]> {
+  "use cache";
+  cacheLife("weeks");
+  const js = await getJson<{
+    features: { properties: { street?: string; housenumber?: string; localadmin?: string; postalcode?: string; distance?: number } }[];
+  }>(
+    `${DIGITRANSIT}/geocoding/v1/reverse`,
+    { "point.lat": String(p.lat), "point.lon": String(p.lon), size: "40", layers: "address", "boundary.circle.radius": String(sadeM / 1000), lang: "fi" },
+    digitransitHeaders(),
+  );
+  return js.features
+    .map((f) => f.properties)
+    .filter((o) => o.street && o.housenumber)
+    .map((o) => ({ katu: o.street!, numero: o.housenumber!, kunta: o.localadmin ?? null, pno: o.postalcode ?? null, metrit: Math.round((o.distance ?? 0) * 1000) }));
+}
+
 export async function postinumeroPisteelle(p: Piste): Promise<string | null> {
   "use cache";
   cacheLife("weeks");
