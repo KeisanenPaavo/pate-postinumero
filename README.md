@@ -9,6 +9,7 @@ melutiedot yhdeltä sivulta. MVP kattaa Uudenmaan (389 postinumeroaluetta).
 cp .env.example .env      # lisää DIGITRANSIT_KEY (https://portal-api.digitransit.fi/)
 npm install
 npm run dev               # http://localhost:3000
+npm test                  # yksikkötestit (Vitest): laskurit ja taloyhtiön nimilogiikka
 ```
 
 ## Data

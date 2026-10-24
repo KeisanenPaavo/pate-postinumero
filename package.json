@@ -9,6 +9,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "test": "vitest run",
     "data": "node scripts/etl/build-alueet.mjs",
     "data:keskustat": "node --env-file=.env scripts/etl/keskustat.mjs",
     "data:palvelut": "node scripts/etl/palvelupisteet.mjs",
@@ -33,6 +34,8 @@
     "eslint": "^9",
     "eslint-config-next": "16.4.3",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vite-tsconfig-paths": "^6.1.1",
+    "vitest": "^4.1.12"
   }
 }

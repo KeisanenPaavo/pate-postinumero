@@ -15,6 +15,59 @@ function oletukset(t: LaskurinTyyppi, varaHinta: number | null) {
   };
 }
 
+export type TuottoSyotteet = {
+  myyntihinta: number;
+  yhtiolaina: number;
+  /** €/kk */
+  vuokra: number;
+  hoitovastike: number;
+  rahoitusvastike: number;
+  tyhjatKuukaudet: number;
+  /** Pankkilainan osuus myyntihinnasta, 0–1. */
+  lainaosuus: number;
+  korko: number;
+  lainaAika: number;
+};
+
+/**
+ * Sijoitusasunnon ensimmäisen vuoden luvut. Tuotot ovat null, kun hintaa tai vuokraa ei ole. Nettotuotossa
+ * vuokrat tyhjien kuukausien jälkeen miinus hoitovastikkeet, jaettuna velattomalla hinnalla + varainsiirtoverolla.
+ */
+export function tuottolaskelma(s: TuottoSyotteet) {
+  const velaton = s.myyntihinta + s.yhtiolaina;
+  const vuokrakuukaudet = Math.min(12, Math.max(0, 12 - s.tyhjatKuukaudet));
+  const pankkilaina = s.myyntihinta * Math.min(1, Math.max(0, s.lainaosuus));
+  const era = kuukausiera(pankkilaina, s.korko, s.lainaAika);
+  const vero = velaton * VARAINSIIRTOVERO;
+  const omaPaaoma = s.myyntihinta - pankkilaina + vero;
+
+  const vuosivuokra = s.vuokra * vuokrakuukaudet;
+  const nettovuokra = vuosivuokra - s.hoitovastike * 12;
+  const kassavirta = vuosivuokra / 12 - s.hoitovastike - s.rahoitusvastike - era;
+  // Ensimmäisen vuoden lyhennykset: erät miinus korot, korot laskettuna kuukausittain pienenevästä pääomasta.
+  let jaljella = pankkilaina;
+  let lyhennykset = 0;
+  for (let i = 0; i < 12 && era > 0; i++) {
+    const lyhennys = era - jaljella * (s.korko / 12);
+    lyhennykset += lyhennys;
+    jaljella -= lyhennys;
+  }
+
+  const valmis = velaton > 0 && s.vuokra > 0;
+  return {
+    velaton,
+    vero,
+    pankkilaina,
+    era,
+    omaPaaoma,
+    kassavirta,
+    lyhennykset,
+    brutto: valmis ? (s.vuokra * 12) / velaton : null,
+    netto: valmis ? nettovuokra / (velaton + vero) : null,
+    omanPaaomanTuotto: valmis && omaPaaoma > 0 ? (kassavirta * 12 + lyhennykset) / omaPaaoma : null,
+  };
+}
+
 /**
  * Sijoitusasunnon tuottolaskuri: oletukset alueen neliöhinnoista ja -vuokrista, käyttäjä korjaa kohteen omilla luvuilla.
  * Laskee brutto- ja nettovuokratuoton, kuukausittaisen kassavirran ja oman pääoman tuoton ensimmäiseltä vuodelta.
@@ -29,36 +82,25 @@ export function Tuottolaskuri({ tyypit, varaHinta }: { tyypit: LaskurinTyyppi[];
     setKohde(oletukset(tyypit.find((t) => t.avain === avain)!, varaHinta));
   };
 
-  const myyntihinta = lue(kohde.myyntihinta);
-  const velaton = myyntihinta + lue(kohde.yhtiolaina);
-  const vuokra = lue(kohde.vuokra);
-  const hoito = lue(kohde.hoitovastike);
-  const rahoitusv = lue(kohde.rahoitusvastike);
-  const vuokrakuukaudet = Math.min(12, Math.max(0, 12 - lue(rahoitus.tyhjat)));
-  const korko = lue(rahoitus.korko) / 100;
-  const pankkilaina = (myyntihinta * Math.min(100, lue(rahoitus.lainaosuus))) / 100;
-  const era = kuukausiera(pankkilaina, korko, lue(rahoitus.laina_aika));
-  const vero = velaton * VARAINSIIRTOVERO;
-  const omaPaaoma = myyntihinta - pankkilaina + vero;
+  const l = tuottolaskelma({
+    myyntihinta: lue(kohde.myyntihinta),
+    yhtiolaina: lue(kohde.yhtiolaina),
+    vuokra: lue(kohde.vuokra),
+    hoitovastike: lue(kohde.hoitovastike),
+    rahoitusvastike: lue(kohde.rahoitusvastike),
+    tyhjatKuukaudet: lue(rahoitus.tyhjat),
+    lainaosuus: lue(rahoitus.lainaosuus) / 100,
+    korko: lue(rahoitus.korko) / 100,
+    lainaAika: lue(rahoitus.laina_aika),
+  });
+  const { velaton, vero, era, omaPaaoma, kassavirta, lyhennykset } = l;
 
-  const vuosivuokra = vuokra * vuokrakuukaudet;
-  const nettovuokra = vuosivuokra - hoito * 12;
-  const kassavirta = vuosivuokra / 12 - hoito - rahoitusv - era;
-  // Ensimmäisen vuoden lyhennykset: erät miinus korot, korot laskettuna kuukausittain pienenevästä pääomasta.
-  let jaljella = pankkilaina;
-  let lyhennykset = 0;
-  for (let i = 0; i < 12 && era > 0; i++) {
-    const lyhennys = era - jaljella * (korko / 12);
-    lyhennykset += lyhennys;
-    jaljella -= lyhennys;
-  }
-
-  const valmis = velaton > 0 && vuokra > 0;
+  const valmis = l.brutto != null;
   const tulokset = [
-    { nimi: "Bruttovuokratuotto", arvo: valmis ? pros.format((vuokra * 12) / velaton) : "–", selite: "vuosivuokra / velaton hinta" },
+    { nimi: "Bruttovuokratuotto", arvo: l.brutto != null ? pros.format(l.brutto) : "–", selite: "vuosivuokra / velaton hinta" },
     {
       nimi: "Nettovuokratuotto",
-      arvo: valmis ? pros.format(nettovuokra / (velaton + vero)) : "–",
+      arvo: l.netto != null ? pros.format(l.netto) : "–",
       selite: "vuokrat − hoitovastikkeet / velaton hinta + varainsiirtovero",
     },
     {
@@ -69,7 +111,7 @@ export function Tuottolaskuri({ tyypit, varaHinta }: { tyypit: LaskurinTyyppi[];
     },
     {
       nimi: "Oman pääoman tuotto",
-      arvo: valmis && omaPaaoma > 0 ? pros.format((kassavirta * 12 + lyhennykset) / omaPaaoma) : "–",
+      arvo: l.omanPaaomanTuotto != null ? pros.format(l.omanPaaomanTuotto) : "–",
       selite: `kassavirta + lyhennykset / oma pääoma ${eur(omaPaaoma)}`,
     },
   ];
