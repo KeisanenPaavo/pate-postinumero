@@ -6,7 +6,9 @@ import type { Lahiosoite } from "./palvelut";
 // avointa linkkiä, joten yhtiöt päätellään osoitteesta ja sen lähiosoitteista (Digitransit reverse, ~150 m):
 // 1. nimihaku kadunnimellä: yhtiön nimessä on katu ja talonumero ("Asunto Oy Fleminginkatu 4-6"),
 // 2. postinumeron taloyhtiöt, joiden osoite on sama talo eikä c/o-osoite ole yrityksen (isännöitsijän osoitteessa
-//    voi olla satoja muiden talojen yhtiöitä).
+//    voi olla satoja muiden talojen yhtiöitä),
+// 3. rakennuksen energiatodistuksen kohteen nimi ("As Oy Ihantola, talo A"), joka on yleensä taloyhtiö – löytää
+//    myös yhtiöt, joiden nimessä ei ole katuosoitetta.
 // Lähteet ja havainnot: docs/datan-saatavuus.md
 
 const YTJ = "https://avoindata.prh.fi/opendata-ytj-api/v3/companies";
@@ -30,8 +32,8 @@ export type Taloyhtio = {
   perustettu: number | null;
   /** "Rekisterissä", "Selvitystilassa", "Konkurssissa", "Saneerauksessa" tai "Lakannut". */
   tila: string;
-  /** Mihin yhtiö löytyi: nimestä (vahva) vai pelkästä osoitteesta (heikompi). */
-  osuma: "nimi" | "osoite";
+  /** Mihin yhtiö löytyi: rakennuksen energiatodistuksesta tai nimestä (vahvat), pelkästä osoitteesta (heikompi) tai käyttäjän haulla. */
+  osuma: "energiatodistus" | "nimi" | "osoite" | "haku";
   /** c/o-osoitteen yritys (yleensä isännöitsijä); yksityishenkilöiden nimiä ei välitetä. */
   hoitaja: string | null;
   /** Tunnettu vuokranantaja, jos c/o tai verkkosivu viittaa siihen: yhtiö on todennäköisesti yhden omistajan. */
@@ -135,6 +137,57 @@ function muunna(y: YtjYhtio, osuma: Taloyhtio["osuma"]): Omit<Taloyhtio, "osoite
   };
 }
 
+// Yhtiömuodot nimen alussa tai lopussa; vertailussa jätetään pois ("As Oy Ihantola" = "Asunto Oy Ihantola").
+const YHTIOMUOTO = /^(?:as\.?\s*oy|asunto[-\s]?oy|asunto-osakeyhtiö|bostads\s*ab|bostadsaktiebolaget|bab)\s+|\s+(?:as\.?\s*oy|asunto oy|bostads ab)$/i;
+
+/** Taloyhtiön ydinnimi vertailuun: "Asunto Oy Papinkuja 2" → "papinkuja 2"; null, jos nimi ei ole asunto-osakeyhtiö. */
+function ydinnimi(nimi: string) {
+  const n = pieni(nimi).replace(/[“”"]/g, "");
+  if (!YHTIOMUOTO.test(n)) return null;
+  return n.replace(YHTIOMUOTO, "").replace(/\s+/g, " ").trim() || null;
+}
+
+/**
+ * Energiatodistuksen kohteen nimestä taloyhtiön nimi: talon, portaan tai rakennuksen tarkenne pois.
+ * "As Oy Malmin Kotiraitti - Rak H" → "As Oy Malmin Kotiraitti", "Asunto Oy Papinkuja 2 / talo 2" → "Asunto Oy Papinkuja 2".
+ */
+export function todistuksenYhtio(kohde: string): string | null {
+  const nimi = kohde
+    .split(/\s*(?:[,/(]|\s[-–]\s)\s*/)[0]
+    .replace(/\s+(?:talo|rak\.?|rakennus|porras|rappu|krs|hus|huset)\b.*$/i, "")
+    .trim();
+  return ydinnimi(nimi) ? nimi : null;
+}
+
+const YTUNNUS = /^\d{7}-\d$/;
+
+/** Rekisteriosoite tekstinä: "Porthaninkatu 10, 00530 Helsinki". */
+function rekisteriosoite(y: YtjYhtio) {
+  const a = y.addresses.find((x) => x.type === 1) ?? y.addresses[0];
+  if (!a) return "";
+  const kaupunki = a.postOffices?.find((p) => p.languageCode === "1")?.city ?? a.postOffices?.[0]?.city ?? "";
+  return [[a.street, a.buildingNumber].filter(Boolean).join(" "), [a.postCode, kaupunki].filter(Boolean).join(" ")].filter(Boolean).join(", ");
+}
+
+async function ytunnuksella(ytunnus: string) {
+  "use cache";
+  cacheLife("days");
+  return haeKaikki({ businessId: ytunnus });
+}
+
+/**
+ * Käyttäjän oma haku Y-tunnuksella tai nimellä, kun automaattinen tunnistus ei osunut. Enintään 20 asunto-osakeyhtiötä,
+ * voimassa olevat ensin; osoite on yhtiön rekisteriosoite (usein isännöitsijän).
+ */
+export async function haeTaloyhtio(haku: string): Promise<Taloyhtio[]> {
+  const q = haku.trim();
+  const yhtiot = YTUNNUS.test(q) ? await ytunnuksella(q) : await nimella(q);
+  return yhtiot
+    .map((y) => ({ ...muunna(y, "haku"), osoite: rekisteriosoite(y), metrit: 0, samaTalo: true }))
+    .sort((a, b) => Number(a.tila === "Lakannut") - Number(b.tila === "Lakannut") || a.nimi.localeCompare(b.nimi, "fi"))
+    .slice(0, 20);
+}
+
 /** "Hämeentie 3 A, Helsinki" → { katu: "Hämeentie", nro: 3, kunta: "Helsinki" }; null, jos talonumeroa ei ole. */
 export function jasennaOsoite(teksti: string) {
   const [alku, ...loput] = teksti.split(",").map((s) => s.trim());
@@ -150,7 +203,13 @@ type Ehdokas = { katu: string; nro: number; kunta: string | null; pno: string | 
  * asunnon osoite (kulmatalo, porras toisella kadulla), joten verrataan kaikkiin ~150 m säteen osoitteisiin ja
  * merkitään samaTalo, kun yhtiö osuu itse osoitteeseen. Tyhjä lista = ei löytynyt; heittää, jos PRH ei vastaa.
  */
-export async function taloyhtiotLahella(osoite: string, lahella: Lahiosoite[], pno: string | null): Promise<Taloyhtio[]> {
+export async function taloyhtiotLahella(
+  osoite: string,
+  lahella: Lahiosoite[],
+  pno: string | null,
+  /** Osoitteen rakennusten energiatodistusten kohdenimet. */
+  todistusnimet: string[] = [],
+): Promise<Taloyhtio[]> {
   const oma = jasennaOsoite(osoite);
   const ehdokkaat: Ehdokas[] = [
     ...(oma ? [{ ...oma, pno, metrit: 0, teksti: `${oma.katu} ${oma.nro}` }] : []),
@@ -159,18 +218,35 @@ export async function taloyhtiotLahella(osoite: string, lahella: Lahiosoite[], p
       return nro ? [{ katu: l.katu, nro, kunta: l.kunta, pno: l.pno, metrit: l.metrit, teksti: `${l.katu} ${l.numero.match(/^\d+(?:\s*[-–]\s*\d+)?/)![0]}` }] : [];
     }),
   ];
-  if (!ehdokkaat.length) return [];
+  const todistusyhtiot = [...new Set(todistusnimet.map(todistuksenYhtio).filter((n): n is string => !!n))];
+  if (!ehdokkaat.length && !todistusyhtiot.length) return [];
   const samaOsoite = (e: Ehdokas) => !!oma && pieni(e.katu) === pieni(oma.katu) && e.nro === oma.nro;
 
   const kadut = [...new Set(ehdokkaat.map((e) => e.katu))];
   const pnot = [...new Set([pno, ...ehdokkaat.map((e) => e.pno)].filter((x): x is string => !!x))].slice(0, 3);
-  const [nimiListat, pnoListat] = await Promise.all([
+  const [nimiListat, pnoListat, todistusListat] = await Promise.all([
     Promise.all(kadut.map((k) => nimella(k))),
     Promise.all(pnot.map((n) => postinumerolla(n).catch(() => []))),
+    Promise.all(todistusyhtiot.map((n) => nimella(ydinnimi(n)!).catch(() => []))),
   ]);
 
   const yhtiot = new Map<string, YtjYhtio>();
-  for (const y of [...nimiListat.flat(), ...pnoListat.flat()]) yhtiot.set(y.businessId.value, y);
+  for (const y of [...nimiListat.flat(), ...pnoListat.flat(), ...todistusListat.flat()]) yhtiot.set(y.businessId.value, y);
+
+  // Energiatodistuksen nimi: täsmälleen sama ydinnimi. Samannimisiä yhtiöitä voi olla monessa kunnassa, joten useasta
+  // hyväksytään vain samalla postinumerolla tai samassa kunnassa oleva; yksittäinen osuma kelpaa, vaikka rekisteriosoite
+  // olisi isännöitsijän muualla.
+  const kunta = oma?.kunta ?? null;
+  const todistuksesta = new Set<string>();
+  for (const nimi of todistusyhtiot) {
+    const ydin = ydinnimi(nimi);
+    const samat = todistusListat.flat().filter((y) => y.names.some((n) => !n.endDate && ydinnimi(n.name) === ydin) && tila(y) !== "Lakannut");
+    const paikalliset = samat.filter((y) =>
+      y.addresses.some((a) => (pno && a.postCode === pno) || (a.postOffices ?? []).some((p) => !!kunta && pieni(p.city) === pieni(kunta))),
+    );
+    const valitut = paikalliset.length ? paikalliset : samat.length === 1 ? samat : [];
+    for (const y of valitut) todistuksesta.add(y.businessId.value);
+  }
 
   // Sama nimi voi olla monessa kunnassa ("Turun Hämeentie 3"): yhtiön osoitteen pitää olla samassa kunnassa
   // tai samalla postinumerolla kuin talo.
@@ -179,6 +255,10 @@ export async function taloyhtiotLahella(osoite: string, lahella: Lahiosoite[], p
 
   const tulos: Taloyhtio[] = [];
   for (const y of yhtiot.values()) {
+    if (todistuksesta.has(y.businessId.value)) {
+      tulos.push({ ...muunna(y, "energiatodistus"), osoite: oma ? `${oma.katu} ${oma.nro}` : osoite, metrit: 0, samaTalo: true });
+      continue;
+    }
     let paras: { e: Ehdokas; osuma: Taloyhtio["osuma"] } | null = null;
     for (const e of ehdokkaat) {
       const osuma = y.names.some((n) => nimiOsuu(n.name, e.katu, e.nro)) && samaSeutu(y, e)
@@ -194,6 +274,12 @@ export async function taloyhtiotLahella(osoite: string, lahella: Lahiosoite[], p
   // Lakanneet yhtiöt vain, jos voimassa olevia ei löytynyt (vanha yhtiö on voitu sulauttaa uuteen).
   const voimassa = tulos.filter((t) => t.tila !== "Lakannut");
   return (voimassa.length ? voimassa : tulos)
-    .sort((a, b) => Number(b.samaTalo) - Number(a.samaTalo) || a.metrit - b.metrit || (a.osuma === "nimi" ? -1 : 1))
+    .sort(
+      (a, b) =>
+        Number(b.samaTalo) - Number(a.samaTalo) ||
+        Number(b.osuma === "energiatodistus") - Number(a.osuma === "energiatodistus") ||
+        a.metrit - b.metrit ||
+        (a.osuma === "nimi" ? -1 : 1),
+    )
     .slice(0, 8);
 }
