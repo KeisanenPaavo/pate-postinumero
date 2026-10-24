@@ -7,6 +7,7 @@ import { IkaKaavio, type IkaRyhma } from "@/components/IkaKaavio";
 import { Piilotettava } from "@/components/osoite/Asetukset";
 import { KaavoitusOsio } from "@/components/osoite/Kaavoitus";
 import { Lahiymparisto } from "@/components/osoite/Lahiymparisto";
+import { TaloyhtioOsio, VainOsoitteelle } from "@/components/osoite/Taloyhtio";
 import { Koulut, Liikenne, MeluOsio, Osoitepalkki, Yhteenveto, type TiivistelmaRivi } from "@/components/osoite/Osiot";
 import { Valilehdet } from "@/components/Valilehdet";
 import {
@@ -251,6 +252,14 @@ async function AlueSisalto({ params }: Pick<PageProps<"/[slug]">, "params">) {
           <KaavoitusOsio keskipiste={alue.keskipiste} pno={alue.pno} kunta={alue.kunta} />
         </Suspense>
       </Osio>
+
+      <Suspense>
+        <VainOsoitteelle keskipiste={alue.keskipiste}>
+          <Osio id="taloyhtio" otsikko="Taloyhtiö">
+            <TaloyhtioOsio keskipiste={alue.keskipiste} pno={alue.pno} />
+          </Osio>
+        </VainOsoitteelle>
+      </Suspense>
 
       <Piilotettava aihe="koulut">
         <Osio id="koulut" otsikko="Koulut">
