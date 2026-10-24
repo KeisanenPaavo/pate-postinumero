@@ -1,5 +1,9 @@
 # Muutokset
 
+## 24.10.2026 – Tietoturvapäivitys
+
+- Next.js päivitetty 16.4.0 → 16.4.3 julkaistun tietoturvahaavoittuvuuden vuoksi. Ei toiminnallisia muutoksia.
+
 ## 24.10.2026 – Sijoittajille, vuokra vai oma, rakennus ja taloyhtiö
 
 Alueraportti palvelee nyt myös sijoittajia ja auttaa vertaamaan omistamista vuokralla asumiseen. Osoitteelle haettu raportti
