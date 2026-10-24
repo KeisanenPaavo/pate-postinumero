@@ -8,6 +8,7 @@ import { Piilotettava } from "@/components/osoite/Asetukset";
 import { KaavoitusOsio } from "@/components/osoite/Kaavoitus";
 import { Lahiymparisto } from "@/components/osoite/Lahiymparisto";
 import { TaloyhtioOsio, VainOsoitteelle } from "@/components/osoite/Taloyhtio";
+import { Tuottolaskuri } from "@/components/osoite/Tuottolaskuri";
 import { Koulut, Liikenne, MeluOsio, Osoitepalkki, Yhteenveto, type TiivistelmaRivi } from "@/components/osoite/Osiot";
 import { Valilehdet } from "@/components/Valilehdet";
 import {
@@ -29,6 +30,7 @@ import {
 import { Ylapalkki } from "@/components/Ylapalkki";
 import { alueenHinta, muutos, suhdeKuntaan } from "@/lib/raportti";
 import { samankaltaisetAlueet } from "@/lib/samankaltaiset";
+import { alueenTuotot, HUONETYYPIT } from "@/lib/sijoitus";
 import { desimaalina, euroa, euroaDesimaalilla, lukuna, osuus, prosentti } from "@/lib/muotoilu";
 
 export function generateStaticParams() {
@@ -94,6 +96,7 @@ function ikaOsuudet(p: Paavo) {
 const OSIOT = [
   ["lahella", "Lähiympäristö"],
   ["hinnat", "Hinnat"],
+  ["sijoittajalle", "Sijoittajalle"],
   ["liikenne", "Liikenne"],
   ["melu", "Melu"],
   ["kaavoitus", "Kaavoitus"],
@@ -234,6 +237,8 @@ async function AlueSisalto({ params }: Pick<PageProps<"/[slug]">, "params">) {
           ]}
         />
       </Osio>
+
+      <Sijoittajalle alue={alue} />
 
       <Osio id="liikenne" otsikko="Liikenne">
         <Suspense fallback={<p className="text-muted">Lasketaan reittejä…</p>}>
@@ -516,6 +521,86 @@ function Vuokrat({ alue }: { alue: Alue }) {
         Tilastokeskus, asuntojen vuokrat.
       </p>
     </div>
+  );
+}
+
+const OLETUSALAT = { yksiot: 30, kaksiot: 50, kolmiot: 75 } as const;
+
+/** "5,2 %" / "−1,4 %" osuudesta (0.052). */
+const pros1 = (x: number | null, etumerkki = false) =>
+  x == null ? "–" : `${etumerkki ? (x >= 0 ? "+" : "−") : ""}${desimaalina(Math.abs(x) * 100)} %`;
+
+/** Bruttovuokratuotto huoneluvuittain ja tuottolaskuri. */
+function Sijoittajalle({ alue }: { alue: Alue }) {
+  const t = alueenTuotot(alue);
+  if (!t) return null;
+  const kaksio = t.tyypit.find((r) => r.tyyppi === "kaksiot")!;
+  const paras = t.tyypit.filter((r) => r.tuotto != null).sort((a, b) => b.tuotto! - a.tuotto!)[0];
+  const nimi = (tyyppi: string) => HUONETYYPIT.find(([a]) => a === tyyppi)![1];
+  const adessiivi = { yksiot: "yksiöillä", kaksiot: "kaksioilla", kolmiot: "kolmioilla" } as const;
+  const johdanto = [
+    t.karkea && paras
+      ? `Alueen omia vuokria ei tilastoida, joten tuotto on laskettu ${t.karkea === "uusimaa" ? "koko Uudenmaan" : "kehyskuntien"} keskivuokralla ja on todennäköisesti yläkanttiin. Tarkista vuokrataso alueen vuokrailmoituksista.`
+      : kaksio.tuotto != null && kaksio.sijoitus != null
+        ? `Kaksion bruttovuokratuotto on ${pros1(kaksio.tuotto)}, enemmän kuin ${Math.round(kaksio.sijoitus * 100)} %:lla Uudenmaan postinumeroalueista (mediaani ${pros1(kaksio.mediaani)}).`
+        : paras
+          ? `Paras bruttovuokratuotto on ${adessiivi[paras.tyyppi]}: ${pros1(paras.tuotto)} (Uudenmaan mediaani ${pros1(paras.mediaani)}).`
+          : "Alueelta on liian vähän kauppoja, jotta tuoton voisi laskea huoneluvuittain. Laskurin oletuksena on kunnan keskihinta.",
+    paras && kaksio.tuotto != null && paras.tyyppi !== "kaksiot" && `Paras tuotto on ${adessiivi[paras.tyyppi]} (${pros1(paras.tuotto)}).`,
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  return (
+    <Osio id="sijoittajalle" otsikko="Sijoittajalle" johdanto={johdanto}>
+      <table className="w-full text-left text-[15px] tabular">
+        <caption className="sr-only">Bruttovuokratuotto huoneluvuittain</caption>
+        <thead className="text-[13px] text-muted">
+          <tr className="border-b border-ink">
+            <th scope="col" className="py-2" />
+            <th scope="col" className="py-2 pl-3 text-right font-medium">
+              Neliöhinta
+            </th>
+            <th scope="col" className="py-2 pl-3 text-right font-medium">
+              Vuokra
+            </th>
+            <th scope="col" className="py-2 pl-3 text-right font-bold text-ink">
+              Bruttotuotto
+            </th>
+            <th scope="col" className="hidden py-2 pl-3 text-right font-medium sm:table-cell">
+              Uusimaa, mediaani
+            </th>
+            <th scope="col" className="hidden py-2 pl-3 text-right font-medium sm:table-cell">
+              Hinta vuodessa, 5 v
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {t.tyypit.map((r) => (
+            <tr key={r.tyyppi} className="border-b border-grid">
+              <th scope="row" className="py-2.5 pr-2 text-left font-normal">
+                {nimi(r.tyyppi)}
+              </th>
+              <td className="py-2.5 pl-3 text-right whitespace-nowrap">{r.hinta != null ? `${euroa(r.hinta)}/m²` : "–"}</td>
+              <td className="py-2.5 pl-3 text-right whitespace-nowrap">{r.vuokra != null ? `${euroaDesimaalilla(r.vuokra)}/m²` : "–"}</td>
+              <td className="py-2.5 pl-3 text-right font-bold whitespace-nowrap">{pros1(r.tuotto)}</td>
+              <td className="hidden py-2.5 pl-3 text-right whitespace-nowrap text-muted sm:table-cell">{pros1(r.mediaani)}</td>
+              <td className="hidden py-2.5 pl-3 text-right whitespace-nowrap text-muted sm:table-cell">{pros1(r.hintamuutos, true)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <p className="mt-3 mb-10 text-[13px] text-muted">
+        Bruttotuotto = vuoden vuokrat / neliöhinta, ennen vastikkeita ja veroja. Neliöhinnat {t.vuosi} (vanhat osakeasunnot,
+        postinumeroalue), vapaarahoitteiset vuokrat {neljannesTekstina(vuokraNeljannes)} ({t.vuokraAlue}). Hinnan muutos on
+        keskimääräinen vuosimuutos viideltä vuodelta. Uudenmaan mediaanissa ovat mukana postinumeroalueet, joille Tilastokeskus
+        julkaisee oman kaupungin vuokrat. Lähde: Tilastokeskus.
+      </p>
+      <Tuottolaskuri
+        varaHinta={t.kuntaHinta}
+        tyypit={t.tyypit.map((r) => ({ avain: r.tyyppi, nimi: nimi(r.tyyppi).replace("+", ""), ala: OLETUSALAT[r.tyyppi], hinta: r.hinta, vuokra: r.vuokra }))}
+      />
+    </Osio>
   );
 }
 
