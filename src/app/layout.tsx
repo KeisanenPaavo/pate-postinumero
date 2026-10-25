@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Analytics } from "@vercel/analytics/next";
 import { Newsreader, Public_Sans } from "next/font/google";
 import { meta } from "@/lib/data";
 import { SIVUSTO } from "@/lib/sivusto";
@@ -31,6 +32,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
             <p>Tiedot ovat suuntaa-antavia eivätkä korvaa kohdekohtaista selvitystä. Melutiedot perustuvat mallinnuksiin.</p>
           </div>
         </footer>
+        <Analytics />
       </body>
     </html>
   );

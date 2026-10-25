@@ -20,6 +20,7 @@
     "tarkista:piste": "node scripts/check/piste.mjs"
   },
   "dependencies": {
+    "@vercel/analytics": "2.0.1",
     "maplibre-gl": "6.11.2",
     "next": "16.4.3",
     "react": "19.3.0",
