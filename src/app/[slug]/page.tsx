@@ -738,7 +738,8 @@ function VertailuTaulukko({ alue, kunta, alueNimi, kuntaNimi }: { alue: Paavo; k
     ["Talouksien mediaanitulot", (p) => euroa(p.tr_mtu)],
     ["Keski-ikä", (p) => (p.he_kika != null ? `${p.he_kika} v` : "–")],
     ["Ylempi korkeakoulututkinto (18+)", (p) => prosentti(p.ko_yl_kork, p.ko_ika18y)],
-    ["Työttömät", (p) => prosentti(p.pt_tyott, p.pt_vakiy)],
+    // Työvoima = työlliset + työttömät; pt_vakiy sisältäisi myös lapset ja eläkeläiset.
+    ["Työttömyysaste", (p) => prosentti(p.pt_tyott, p.pt_tyoll == null || p.pt_tyott == null ? null : p.pt_tyoll + p.pt_tyott)],
     ["Lapsitaloudet", (p) => prosentti(p.te_laps, p.te_taly)],
     ["Yksinasuvat taloudet", (p) => prosentti(p.te_yks, p.te_taly)],
     ["Omistusasunnoissa", (p) => prosentti(p.te_omis_as, p.te_taly)],

@@ -1,5 +1,12 @@
 # Muutokset
 
+## 25.10.2026 – Työttömyysaste korjattu
+
+- Alueraportin vertailutaulukon "Työttömät"-rivi oli työttömien osuus koko väestöstä (myös lapset ja eläkeläiset),
+  joten se näytti noin puolet todellisesta. Rivi on nyt **työttömyysaste**: työttömät / (työlliset + työttömät).
+  Esimerkiksi Espoo 5 % → 10 %, koko maa 6 % → 12 %.
+- Taloyhtiöhaku ei enää ehdota toisen kunnan samannimisen kadun yhtiöitä.
+
 ## 24.10.2026 – Tietoturvapäivitys
 
 - Next.js päivitetty 16.4.0 → 16.4.3 julkaistun tietoturvahaavoittuvuuden vuoksi. Ei toiminnallisia muutoksia.
