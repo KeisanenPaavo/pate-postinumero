@@ -27,6 +27,10 @@ Skriptit: `scripts/check/` — aja projektin juuresta.
 | Pysäkit | Digitransit GraphQL `stopsByRadius` (800 m; jos tyhjä, 2 km) | ✅ | koko Suomi; laiturit yhdistetään nimen ja kulkuneuvon mukaan, yölinjat pois. Maaseudulla (esim. Halkia) lähin pysäkki on yli 800 m päässä → laajennettu haku |
 | Geokoodaus | Digitransit `geocoding/v1/search` | ✅ | palauttaa myös postinumeron (täsmäsi polygonihakuun) |
 | Matka-ajat | Digitransit GraphQL `routing/v2/finland/gtfs/v1`, `planConnection` | ✅ | koko Suomi: julkinen, pyörä, kävely |
+| Tulvat | Syke WMS `paikkatiedot.ymparisto.fi/geoserver/tulva_perus_peittama/wms`, tasot `tulvanpeittama_meritulva` ja `tulvanpeittama_vesistotulva`, GetFeatureInfo (`info_format=application/json`) | ✅ | rasteri, `GRAY_INDEX`: 4 = 1/20a, 6 = 1/100a, 8 = 1/1000a, 9 = vesistö/meri, 127 = ei tulvaa, tyhjä = ei kartoitettu. Yleinen WFS (`/geoserver/wfs`) on pois päältä; työtilan WFS toimii, mutta siinä on vain tulvasuojellut alueet, ei peittämää. Tasot kysyttävä erikseen (yhteiskyselyssä tyhjä taso jää pois). Ei hulevesitulvia. Syken avoin data, CC BY 4.0 |
+| Maaperä | GTK ArcGIS REST `gtkdata.gtk.fi/arcgis/rest/services/Rajapinnat/GTK_Maapera_WMS/MapServer/{taso}/query` (piste, `inSR=4326`, `f=json`); taso 46 = 1:20 000 / 1:50 000 (pinta- ja pohjamaalaji), taso 53 = 1:200 000. Sama myös WFS:nä (`GTK_Maapera_WFS`, `maapera_20k_maalajit`), mutta vain GML | ⚠️ | ei avainta, < 1 s. **Kaupunkien keskusta-alueet ja osa pientaloalueista kartoittamatta**: 9 testipisteestä 1:20k-tieto 5:llä (kallio, savi, täytemaa); Korso ja Kalajärvi saatiin vain 1:200k:sta (savi), Tapiola ja Porvoon keskusta eivät kummastakaan. Palvelun metatiedoissa ei lisenssiä; GTK:n mukaan käyttöehdot ovat tasokohtaisia → tarkistettava ennen julkaisua |
+| Radon | STUK: ei rajapintaa – vain 10 × 10 km ruutukartta kuvana ja Suomi.fi-karttapalvelun kuntakartta. Sotkanet REST `sotkanet.fi/rest/1.1/json?indicator=…&years=…&genders=total`: 3580 mediaani, 3581 yli 300 Bq/m³ %, 3582 mitattuja asuntoja | ⚠️ kunnittain | 297 kunnalla mediaani (2023). Luvut ovat kunkin vuoden mittauksista ja otokset pieniä (Espoo 163, Sipoo 10 vuonna 2023) → yhdistetään 5 vuotta mittausmäärällä painottaen: Espoo 9,5 % (972 mittausta 2019–2023), Vantaa 16,0 %, Porvoo 22,5 %. Ei pistetietoa, joten vain kuntatason suuntaa-antava luku |
+| Kiinteistöraja ja palsta | MML kiinteistötietojen kyselypalvelu, avoimet tuotteet: `avoin-paikkatieto.maanmittauslaitos.fi/kiinteisto-avoin/simple-features/v3/collections/PalstanSijaintitiedot/items` | ⛔ ei testattu | vaatii API-avaimen (ilmainen, itsepalvelu MML:n verkkopalvelussa); `.env`:ssä ei ole avainta. Lisäksi palvelin ei vastannut tästä verkosta (TCP-yhteys aikakatkaistiin porteissa 443 ja 80, 25.10.2026), eikä MML:n dokumentaatiota saanut haettua. Skripti käyttää `MML_API_KEY`:tä, jos se on asetettu |
 
 ## Havainnot
 
@@ -37,6 +41,29 @@ Skriptit: `scripts/check/` — aja projektin juuresta.
 - Paavo-tiedot päivittyvät tammikuussa, hinnat neljännesvuosittain.
 - Väylän meluvyöhykkeet alkavat 40–45 dB (päivä); ei osumaa = alle alimman vyöhykkeen *tai* kartoittamaton alue.
 - OSM:n `amenity=school` sisältää myös autokouluja ym. → virallinen oppilaitosrekisteri on parempi.
+
+## Omakotitalon riskit (`scripts/check/okt-riskit.mjs`, 25.10.2026)
+
+`node --env-file-if-exists=.env scripts/check/okt-riskit.mjs [<lat> <lon>]` – ilman argumentteja ajetaan 9 testipistettä.
+
+| Piste | Tulva (meri / vesistö) | Maaperä | Radon, kunta (> 300 Bq/m³) |
+|---|---|---|---|
+| Tapiola | ei / ei kartoitettu | kartoittamaton | Espoo 9,5 % |
+| Kauklahti | ei / ei | kalliomaa | Espoo 9,5 % |
+| Korso | ei / ei | 1:200k savi | Vantaa 16,0 % |
+| Söderkulla | ei / ei | kalliomaa | Sipoo 21,9 % (32 mittausta) |
+| Klaukkala | ei / ei | kalliomaa | Nurmijärvi 10,2 % |
+| Paloheinä | ei / ei | savi | Helsinki 13,4 % |
+| Kalajärvi | ei / ei | 1:200k savi | Espoo 9,5 % |
+| Vanhankaupunginlahti | 1/1000a / ei | täytemaa | Helsinki 13,4 % |
+| Porvoo, joenranta | 1/100a / ei | kartoittamaton | Porvoo 22,5 % |
+
+- Tulva ja maaperä toimivat pistekyselyinä kuten melu ja kaava: 0,3–1 s pisteeltä, ei avainta.
+- Tulvarasterin resoluutio riittää tonttitasolle; Vanhankaupunginlahdella arvo vaihtuu 100–200 metrin välein.
+- Maaperä kertoo rakennettavuudesta vain suuntaa (savi → painumariski, perustamistapa kuntotarkastuksessa); kartoittamaton
+  ei tarkoita hyvää maaperää.
+- Radonista vain kuntataso, ja pienissä kunnissa mittauksia on vähän → näytettävä mittausmäärä ja "suuntaa-antava".
+- Kiinteistöraja edellyttää MML:n API-avainta ja yhteyden tarkistamista toisesta verkosta.
 
 ## Digitransit-havainnot (`scripts/check/digitransit.mjs`)
 
